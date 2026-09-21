@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
+from app.api.bonus import router as bonus_router
 from app.api.chat import router as chat_router
 from app.api.sessions import router as sessions_router
 from app.core.errors import AppError, app_error_handler
@@ -26,6 +27,7 @@ app.add_middleware(
 app.add_exception_handler(AppError, app_error_handler)
 app.include_router(sessions_router)
 app.include_router(chat_router)
+app.include_router(bonus_router)
 
 
 @app.get("/api/health")

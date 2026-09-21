@@ -19,6 +19,7 @@ async def _embed_and_store(
     embedder: Embedder,
     vector_store: VectorStore,
     session_store: SessionStore,
+    llm=None,
 ) -> None:
     """Embed chunks and persist them; update SourceRecord status."""
     record = session.sources[source_id]
@@ -30,6 +31,15 @@ async def _embed_and_store(
         record.status = "ready"
         record.chunk_count = len(result.chunks)
         record.warnings = result.warnings
+
+        # Generate summary + topics in the background (best-effort)
+        try:
+            from app.services.summarise import summarise_source
+            summary, topics = await summarise_source(result.chunks, llm=llm)
+            record.summary = summary or None
+            record.topics = topics
+        except Exception as exc:
+            logger.warning("Summary generation failed for %s: %s", source_id, exc)
     except Exception as exc:
         logger.exception("Embedding failed for source %s", source_id)
         record.status = "failed"
@@ -44,6 +54,7 @@ async def ingest_file(
     embedder: Embedder | None = None,
     vector_store: VectorStore | None = None,
     session_store: SessionStore | None = None,
+    llm=None,
 ) -> str:
     """Ingest a PDF or PPTX file. Returns the new source_id.
 
@@ -75,7 +86,7 @@ async def ingest_file(
             record.status = "failed"
             record.error = str(exc)
             return
-        await _embed_and_store(session, source_id, result, emb, vs, ss)
+        await _embed_and_store(session, source_id, result, emb, vs, ss, llm=llm)
         record.name = result.name  # ingestor may normalise the name
 
     asyncio.create_task(_run())
@@ -89,6 +100,7 @@ async def ingest_url(
     embedder: Embedder | None = None,
     vector_store: VectorStore | None = None,
     session_store: SessionStore | None = None,
+    llm=None,
 ) -> str:
     """Ingest a YouTube or web URL. Returns the new source_id.
 
@@ -120,7 +132,7 @@ async def ingest_url(
             record.status = "failed"
             record.error = str(exc)
             return
-        await _embed_and_store(session, source_id, result, emb, vs, ss)
+        await _embed_and_store(session, source_id, result, emb, vs, ss, llm=llm)
         record.name = result.name
 
     asyncio.create_task(_run())
