@@ -76,6 +76,23 @@ export async function exportCourse(cid: string): Promise<void> {
   a.click();
 }
 
+export async function uploadSyllabus(
+  cid: string,
+  file: File,
+  replace = false,
+): Promise<ReadableStreamDefaultReader<Uint8Array>> {
+  const BASE_URL =
+    (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8000/api";
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(
+    `${BASE_URL}/courses/${cid}/syllabus${replace ? "?replace=true" : ""}`,
+    { method: "POST", body: form },
+  );
+  if (!res.ok || !res.body) throw new Error(`Syllabus upload failed: ${res.status}`);
+  return res.body.getReader();
+}
+
 export async function refreshResources(
   cid: string,
   lessonId: string | null,

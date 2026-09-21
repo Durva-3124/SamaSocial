@@ -4,20 +4,40 @@ import type { CourseMessage } from "../hooks/useCourse";
 import "./CourseChatPanel.css";
 
 interface Props {
+  courseId: string | null;
   messages: CourseMessage[];
   streaming: boolean;
   missing: string[];
   error: string | null;
   onSend: (text: string) => void;
+  onSyllabusUpload: (file: File, replace: boolean) => void;
 }
 
-export default function CourseChatPanel({ messages, streaming, missing, error, onSend }: Props) {
+export default function CourseChatPanel({ courseId, messages, streaming, missing, error, onSend, onSyllabusUpload }: Props) {
   const [input, setInput] = useState("");
+  const [confirmReplace, setConfirmReplace] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setPendingFile(file);
+    setConfirmReplace(false);
+    onSyllabusUpload(file, false);
+  }
+
+  function handleConfirmReplace() {
+    if (pendingFile) onSyllabusUpload(pendingFile, true);
+    setConfirmReplace(false);
+    setPendingFile(null);
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -32,6 +52,14 @@ export default function CourseChatPanel({ messages, streaming, missing, error, o
       {missing.length > 0 && (
         <div className="ccp-missing">
           Still needed: <strong>{missing.join(", ")}</strong>
+        </div>
+      )}
+
+      {confirmReplace && (
+        <div className="ccp-confirm">
+          <span>A plan already exists. Replace it?</span>
+          <button className="btn btn--primary" onClick={handleConfirmReplace}>Replace</button>
+          <button className="btn btn--secondary" onClick={() => { setConfirmReplace(false); setPendingFile(null); }}>Cancel</button>
         </div>
       )}
 
@@ -52,7 +80,26 @@ export default function CourseChatPanel({ messages, streaming, missing, error, o
         <div ref={bottomRef} />
       </div>
 
+      {/* Syllabus upload slot */}
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".pdf"
+        style={{ display: "none" }}
+        onChange={handleFileChange}
+        disabled={!courseId}
+      />
+
       <form className="ccp-form" onSubmit={handleSubmit}>
+        <button
+          type="button"
+          className="btn btn--secondary ccp-attach"
+          onClick={() => fileRef.current?.click()}
+          disabled={!courseId || streaming}
+          title="Upload syllabus PDF"
+        >
+          📎
+        </button>
         <input
           className="ccp-input"
           type="text"

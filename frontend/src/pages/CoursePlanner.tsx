@@ -6,9 +6,29 @@ import { useCourse } from "../hooks/useCourse";
 import "./CoursePlanner.css";
 
 export default function CoursePlanner() {
-  const { courseId, intake, missing, plan, planVersion, messages, streaming, error, sendMessage, patch } =
+  const { courseId, intake, missing, plan, planVersion, messages, streaming, error, sendMessage, patch, uploadSyllabusFile } =
     useCourse();
   const [refreshing, setRefreshing] = useState(false);
+  const [confirmReplace, setConfirmReplace] = useState(false);
+  const [pendingSyllabusFile, setPendingSyllabusFile] = useState<File | null>(null);
+
+  const handleSyllabusUpload = useCallback(
+    (file: File, replace: boolean) => {
+      uploadSyllabusFile(file, replace).then(() => {
+        if (error === "PLAN_EXISTS" && !replace) {
+          setPendingSyllabusFile(file);
+          setConfirmReplace(true);
+        }
+      });
+    },
+    [uploadSyllabusFile, error],
+  );
+
+  const handleConfirmReplace = useCallback(() => {
+    if (pendingSyllabusFile) uploadSyllabusFile(pendingSyllabusFile, true);
+    setConfirmReplace(false);
+    setPendingSyllabusFile(null);
+  }, [pendingSyllabusFile, uploadSyllabusFile]);
 
   const handleExport = useCallback(() => {
     if (courseId) exportCourse(courseId);
@@ -41,12 +61,21 @@ export default function CoursePlanner() {
     <main className="cp-layout">
       <div className="cp-chat">
         <CourseChatPanel
+          courseId={courseId}
           messages={messages}
           streaming={streaming}
           missing={missing ?? []}
-          error={error}
+          error={error === "PLAN_EXISTS" ? null : error}
           onSend={sendMessage}
+          onSyllabusUpload={handleSyllabusUpload}
         />
+        {confirmReplace && (
+          <div className="cp-confirm">
+            <span>A plan already exists. Replace it with the uploaded syllabus?</span>
+            <button className="btn btn--primary" onClick={handleConfirmReplace}>Replace</button>
+            <button className="btn btn--secondary" onClick={() => { setConfirmReplace(false); setPendingSyllabusFile(null); }}>Cancel</button>
+          </div>
+        )}
       </div>
 
       <div className="cp-plan">

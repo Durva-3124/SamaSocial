@@ -4,6 +4,7 @@ import {
   getCourse,
   openCourseStream,
   patchPlan,
+  uploadSyllabus,
   type Course,
   type IntakeData,
 } from "../api/courses";
@@ -25,6 +26,7 @@ export interface UseCourseReturn {
   error: string | null;
   sendMessage: (text: string) => Promise<void>;
   patch: (path: string, value: unknown) => Promise<void>;
+  uploadSyllabusFile: (file: File, replace: boolean) => Promise<void>;
 }
 
 export function useCourse(): UseCourseReturn {
@@ -125,6 +127,62 @@ export function useCourse(): UseCourseReturn {
     }
   }, []);
 
+  const uploadSyllabusFile = useCallback(async (file: File, replace: boolean) => {
+    const cid = cidRef.current;
+    if (!cid) return;
+    setError(null);
+    setStreaming(true);
+    const decoder = new TextDecoder();
+    let buffer = "";
+    try {
+      const reader = await uploadSyllabus(cid, file, replace);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const blocks = buffer.split("\n\n");
+        buffer = blocks.pop() ?? "";
+        for (const block of blocks) {
+          const eventLine = block.split("\n").find((l) => l.startsWith("event: "));
+          const dataLine = block.split("\n").find((l) => l.startsWith("data: "));
+          if (!eventLine || !dataLine) continue;
+          const event = eventLine.slice(7).trim();
+          const data = JSON.parse(dataLine.slice(6)) as Record<string, unknown>;
+          if (event === "intake_state") {
+            setIntake(data.intake as IntakeData);
+            setMissing(data.missing as string[]);
+          } else if (event === "plan_update") {
+            setPlan(data.plan as Course);
+            setPlanVersion(data.plan_version as number);
+          } else if (event === "token") {
+            // append to last assistant message or create one
+            setMessages((prev) => {
+              const last = prev[prev.length - 1];
+              if (last?.role === "assistant") {
+                const next = [...prev];
+                next[next.length - 1] = { ...last, content: last.content + (data.text as string) };
+                return next;
+              }
+              return [...prev, { role: "assistant", content: data.text as string }];
+            });
+          } else if (event === "error") {
+            const code = (data as Record<string, string>).code;
+            if (code === "PLAN_EXISTS") {
+              // bubble up so CoursePlanner can show confirm dialog
+              setError("PLAN_EXISTS");
+            } else {
+              setError(data.message as string);
+            }
+          }
+        }
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Syllabus upload failed");
+    } finally {
+      setStreaming(false);
+    }
+  }, []);
+
   return {
     courseId,
     intake,
@@ -137,5 +195,6 @@ export function useCourse(): UseCourseReturn {
     error,
     sendMessage,
     patch,
+    uploadSyllabusFile,
   };
 }
