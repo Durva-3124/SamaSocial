@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
+from app.api.sessions import router as sessions_router
 from app.core.errors import AppError, app_error_handler
 
 logging.basicConfig(level=logging.INFO)
@@ -22,6 +23,7 @@ app.add_middleware(
 )
 
 app.add_exception_handler(AppError, app_error_handler)
+app.include_router(sessions_router)
 
 
 @app.get("/api/health")
