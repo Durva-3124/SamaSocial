@@ -1,0 +1,112 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Course",
+  "description": "A generated course plan produced by the Course Planner.",
+  "type": "object",
+  "required": ["title", "description", "level", "total_weeks", "modules"],
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Course title."
+    },
+    "description": {
+      "type": "string",
+      "description": "Short course description."
+    },
+    "level": {
+      "type": "string",
+      "enum": ["beginner", "intermediate", "advanced"],
+      "description": "Target difficulty level."
+    },
+    "total_weeks": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Total duration in weeks."
+    },
+    "modules": {
+      "type": "array",
+      "description": "Ordered list of course modules (one per week).",
+      "items": {
+        "$ref": "#/definitions/Module"
+      }
+    }
+  },
+  "definitions": {
+    "Module": {
+      "type": "object",
+      "required": ["id", "title", "lessons"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Module identifier, e.g. \"m1\".",
+          "pattern": "^m[0-9]+$"
+        },
+        "title": {
+          "type": "string"
+        },
+        "lessons": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Lesson"
+          }
+        }
+      }
+    },
+    "Lesson": {
+      "type": "object",
+      "required": ["id", "title"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Lesson identifier, e.g. \"m1-l2\".",
+          "pattern": "^m[0-9]+-l[0-9]+$"
+        },
+        "title": {
+          "type": "string"
+        },
+        "duration_minutes": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 30
+        },
+        "objectives": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Learning objectives for this lesson."
+        },
+        "resources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Resource"
+          }
+        }
+      }
+    },
+    "Resource": {
+      "type": "object",
+      "required": ["title", "url", "type"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "UUID hex string."
+        },
+        "title": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["video", "article", "exercise", "other"]
+        },
+        "validated": {
+          "type": "boolean",
+          "description": "True if the URL passed a HEAD reachability check.",
+          "default": false
+        }
+      }
+    }
+  }
+}
