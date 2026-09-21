@@ -1,0 +1,12 @@
+# Project rules (Samasocial AI)
+- Stack: Python 3.11 + FastAPI + Pydantic v2 (backend/), React + Vite + TypeScript (frontend/).
+- Read docs/API_CONTRACT.md before touching any endpoint. Never change it unless I ask.
+- All config via app/core/config.py Settings. Never read os.environ elsewhere. Never hardcode keys or URLs.
+- Layering: api/ (thin routes, no business logic) -> services/ (logic) -> models/ (pydantic schemas). Services never import from api/.
+- All LLM calls go through app/services/llm.py. All embeddings go through app/services/embeddings.py.
+- Type hints everywhere. Docstrings on public functions. No print(); use logging.
+- Errors: raise AppError(code, message, status) from app/core/errors.py. A global handler returns {"error": {"code", "message"}}.
+- Blocking work (PDF parsing, embeddings) must run via asyncio.to_thread / run_in_threadpool, never on the event loop.
+- Every module ships with pytest tests in backend/tests/ that need no network and no real API key (use FakeLLM, fake embedder, respx).
+- Do not add a dependency without listing it in requirements.txt and telling me why.
+- Frontend: functional components + hooks, no `any`, API calls only via src/api/, components under 150 lines.
