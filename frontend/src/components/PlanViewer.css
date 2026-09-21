@@ -1,0 +1,211 @@
+.pv {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.pv-header {
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.pv-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.pv-course-title {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+}
+
+.pv-version {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.pv-course-desc {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.pv-meta {
+  display: flex;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.pv-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-xs);
+}
+
+.pv-modules {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.pv-module {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.pv-module-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-surface);
+}
+
+.pv-module-title {
+  font-weight: 600;
+  font-size: var(--font-size-base);
+  flex: 1;
+}
+
+.pv-module-desc {
+  padding: var(--spacing-xs) var(--spacing-md);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.pv-lessons {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pv-lesson {
+  border-top: 1px solid var(--color-border);
+}
+
+.pv-lesson-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.pv-lesson-title {
+  flex: 1;
+  font-size: var(--font-size-sm);
+}
+
+.pv-duration {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.pv-refresh-btn {
+  padding: 2px 6px;
+  font-size: var(--font-size-sm);
+  opacity: 0.5;
+}
+
+.pv-refresh-btn:hover {
+  opacity: 1;
+}
+
+.pv-lesson-body {
+  padding: var(--spacing-sm) var(--spacing-md) var(--spacing-md) calc(var(--spacing-md) + 20px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.pv-summary {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.pv-resources {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pv-resource {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-sm);
+}
+
+.pv-resource-type {
+  font-size: 0.7rem;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  text-transform: uppercase;
+  font-weight: 600;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+}
+
+.pv-resource-type--video { background: color-mix(in srgb, var(--color-error) 15%, transparent); color: var(--color-error); }
+.pv-resource-type--article { background: color-mix(in srgb, var(--color-primary) 15%, transparent); color: var(--color-primary); }
+.pv-resource-type--exercise { background: color-mix(in srgb, var(--color-success) 15%, transparent); color: var(--color-success); }
+
+.pv-resource-link {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.pv-resource-link:hover { text-decoration: underline; }
+
+.pv-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  padding: 0;
+  font-size: var(--font-size-sm);
+  line-height: 1;
+  width: 16px;
+  flex-shrink: 0;
+}
+
+/* Editable inline elements */
+.editable {
+  cursor: text;
+  border-radius: var(--radius-sm);
+  padding: 1px 3px;
+  transition: background 0.1s;
+}
+
+.editable:hover {
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+}
+
+input.editable--active,
+textarea.editable--active {
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  padding: 1px 3px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: inherit;
+  outline: none;
+  width: 100%;
+  resize: vertical;
+}

@@ -1,0 +1,63 @@
+.cp-layout {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  height: calc(100vh - 52px); /* subtract navbar height */
+  overflow: hidden;
+}
+
+.cp-chat {
+  border-right: 1px solid var(--color-border);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.cp-plan {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.cp-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: var(--spacing-sm);
+  color: var(--color-text-muted);
+  text-align: center;
+  padding: var(--spacing-xl);
+}
+
+.cp-intake-hint {
+  font-size: var(--font-size-sm);
+}
+
+/* btn--ghost utility (used in PlanViewer) */
+.btn--ghost {
+  background: none;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+}
+
+.btn--ghost:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+@media (max-width: 768px) {
+  .cp-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: 50vh 1fr;
+  }
+
+  .cp-chat {
+    border-right: none;
+    border-bottom: 1px solid var(--color-border);
+  }
+}
