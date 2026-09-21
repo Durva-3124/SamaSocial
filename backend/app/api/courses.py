@@ -1,6 +1,7 @@
 """Course planner API routes."""
 import json
 import logging
+from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Response, UploadFile
 from fastapi.responses import StreamingResponse
@@ -106,7 +107,47 @@ async def patch_plan(cid: str, body: PatchBody) -> dict:
     return {"plan": record.plan.model_dump(), "plan_version": record.plan_version}
 
 
-@router.get("/courses/{cid}/export")
+class RefreshBody(BaseModel):
+    lesson_id: str | None = None
+
+
+def _sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+async def _refresh_stream(cid: str, lesson_id: str | None) -> AsyncIterator[str]:
+    """SSE generator for resource refresh."""
+    from app.services.resources import enrich_course
+    record = get_course_store().get(cid)
+    if record.plan is None:
+        yield _sse("error", {"code": "NO_PLAN", "message": "No plan to enrich."})
+        return
+    try:
+        updated_plan, changed_ids = await enrich_course(
+            record.plan, lesson_id
+        )
+        record.plan = updated_plan
+        record.plan_version += 1
+        yield _sse("plan_update", {
+            "plan": updated_plan.model_dump(),
+            "plan_version": record.plan_version,
+            "changed_ids": changed_ids,
+        })
+    except Exception as exc:
+        logger.exception("Resource refresh failed")
+        yield _sse("error", {"code": "REFRESH_ERROR", "message": str(exc)})
+        return
+    yield _sse("done", {})
+
+
+@router.post("/courses/{cid}/resources/refresh")
+async def refresh_resources(cid: str, body: RefreshBody) -> StreamingResponse:
+    """Enrich lesson resources via YouTube/Tavily/LLM and stream plan_update."""
+    return StreamingResponse(
+        _refresh_stream(cid, body.lesson_id),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 async def export_course(cid: str) -> Response:
     """Export the course plan as a JSON file attachment."""
     record = get_course_store().get(cid)
