@@ -3,10 +3,11 @@ import json
 import logging
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, Response, UploadFile
+from fastapi import APIRouter, Query, Response, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from app.core.config import get_settings
 from app.core.errors import AppError
 from app.models.course import Course, missing_intake_fields
 from app.services.course_chat import course_chat_stream
@@ -148,6 +149,7 @@ async def refresh_resources(cid: str, body: RefreshBody) -> StreamingResponse:
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+@router.get("/courses/{cid}/export")
 async def export_course(cid: str) -> Response:
     """Export the course plan as a JSON file attachment."""
     record = get_course_store().get(cid)
@@ -159,4 +161,69 @@ async def export_course(cid: str) -> Response:
         content=content,
         media_type="application/json",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+async def _syllabus_stream(
+    cid: str,
+    data: bytes,
+    replace: bool,
+) -> AsyncIterator[str]:
+    """SSE generator for syllabus PDF restructuring."""
+    from app.services.syllabus import merge_intake, restructure_syllabus
+
+    record = get_course_store().get(cid)
+
+    if record.plan is not None and not replace:
+        yield _sse("error", {"code": "PLAN_EXISTS", "message": "A plan already exists. Send ?replace=true to overwrite."})
+        return
+
+    try:
+        result = await restructure_syllabus(data)
+    except AppError as exc:
+        yield _sse("error", {"code": exc.code, "message": exc.message})
+        return
+    except Exception as exc:
+        logger.exception("Syllabus restructuring failed")
+        yield _sse("error", {"code": "SYLLABUS_ERROR", "message": str(exc)})
+        return
+
+    record.plan = result.course
+    record.plan_version += 1
+    record.intake = merge_intake(record.intake, result.inferred_intake)
+
+    missing = missing_intake_fields(record.intake)
+    yield _sse("intake_state", {"intake": record.intake.model_dump(), "missing": missing})
+    yield _sse("plan_update", {
+        "plan": record.plan.model_dump(),
+        "plan_version": record.plan_version,
+        "changed_ids": [m.id for m in record.plan.modules],
+    })
+
+    reply = f"I've restructured your syllabus into **{result.course.title}** — {result.course.description}"
+    for word in reply.split(" "):
+        yield _sse("token", {"text": word + " "})
+
+    from app.models.llm import Message
+    record.messages.append(Message(role="assistant", content=reply))
+    yield _sse("done", {})
+
+
+@router.post("/courses/{cid}/syllabus")
+async def upload_syllabus(
+    cid: str,
+    file: UploadFile,
+    replace: bool = Query(default=False),
+) -> StreamingResponse:
+    """Upload a syllabus PDF and restructure it into a course plan via SSE."""
+    settings = get_settings()
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise AppError("UNSUPPORTED_FILE", "Only PDF files are accepted.", 415)
+    data = await file.read()
+    if len(data) > settings.MAX_UPLOAD_MB * 1024 * 1024:
+        raise AppError("FILE_TOO_LARGE", f"File exceeds {settings.MAX_UPLOAD_MB} MB.", 413)
+    return StreamingResponse(
+        _syllabus_stream(cid, data, replace),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
