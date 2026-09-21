@@ -1,0 +1,126 @@
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.chat-empty {
+  color: var(--color-text-muted);
+  text-align: center;
+  margin-top: var(--spacing-xl);
+  font-size: var(--font-size-sm);
+}
+
+.chat-bubble {
+  max-width: 80%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius-lg);
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+}
+
+.chat-bubble p { margin: 0; }
+
+.chat-bubble--user {
+  align-self: flex-end;
+  background: var(--color-primary);
+  color: #fff;
+  border-bottom-right-radius: var(--radius-sm);
+}
+
+.chat-bubble--assistant {
+  align-self: flex-start;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-bottom-left-radius: var(--radius-sm);
+}
+
+.citations {
+  list-style: none;
+  padding: 0;
+  margin: var(--spacing-sm) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--spacing-xs);
+}
+
+.citation {
+  display: flex;
+  gap: var(--spacing-xs);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  align-items: baseline;
+}
+
+.citation__label {
+  font-weight: 600;
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.citation__source {
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.citation__locator {
+  color: var(--color-text-muted);
+}
+
+.chat-declined {
+  margin: var(--spacing-xs) 0 0;
+  font-size: 0.75rem;
+  color: var(--color-warning);
+}
+
+.chat-error {
+  color: var(--color-error);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+.chat-form {
+  display: flex;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg);
+}
+
+.chat-mode {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.chat-input {
+  flex: 1;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+}
+
+.chat-input:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
