@@ -1,5 +1,8 @@
 """Intake analysis: extract structured fields from a user message."""
+from __future__ import annotations
+
 import logging
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -9,8 +12,18 @@ from app.services.llm import LLMClient, get_llm
 
 logger = logging.getLogger(__name__)
 
+Intent = Literal["intake", "refine", "clarify"]
+
 _SYSTEM = """You are a course planning assistant collecting information from a student.
-Extract any of these fields from the conversation and return JSON:
+
+First, classify the user's intent as one of:
+- "intake": they are providing course details (topic, level, duration, goals, etc.)
+- "refine": they are giving SPECIFIC feedback on an existing plan (e.g. "make module 2 simpler",
+  "add more exercises", "shorten to 4 weeks", "focus on practical projects")
+- "clarify": their message is too vague to act on (e.g. "make it better", "improve it",
+  "change it", "fix it") — no specific module, lesson, or change is mentioned
+
+Then extract any of these fields that are clearly stated:
 - topic (str): the subject they want to learn
 - level (str): one of "beginner", "intermediate", "advanced"
 - duration_weeks (int): how many weeks they want the course to last
@@ -18,10 +31,11 @@ Extract any of these fields from the conversation and return JSON:
 - prerequisites (list[str]): prior knowledge they mentioned
 
 Return ONLY the fields that are clearly stated. Omit fields that are not mentioned.
-Return a JSON object with only the fields you found."""
+Return a JSON object with "intent" and only the intake fields you found."""
 
 
 class _IntakeExtract(BaseModel):
+    intent: Intent = "intake"
     topic: str | None = None
     level: str | None = None
     duration_weeks: int | None = None
@@ -38,9 +52,10 @@ async def analyse_turn(
     current_intake: IntakeData,
     *,
     llm: LLMClient | None = None,
-) -> IntakeData:
-    """Merge any newly extracted intake fields into current_intake and return it.
+) -> tuple[IntakeData, Intent]:
+    """Merge any newly extracted intake fields into current_intake.
 
+    Returns (updated_intake, intent).
     Never overwrites an already-set field unless the new value is non-null.
     """
     _llm = llm or get_llm()
@@ -52,8 +67,9 @@ async def analyse_turn(
         )
     except Exception as exc:
         logger.warning("Intake extraction failed: %s", exc)
-        return current_intake
+        return current_intake, "intake"
 
+    intent: Intent = extracted.intent
     updated = current_intake.model_copy(deep=True)
 
     if extracted.topic and not updated.topic:
@@ -71,7 +87,7 @@ async def analyse_turn(
             p for p in extracted.prerequisites if p not in existing
         ]
 
-    return updated
+    return updated, intent
 
 
 def intake_prompt(missing: list[str]) -> str:

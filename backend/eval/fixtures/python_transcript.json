@@ -1,0 +1,42 @@
+[
+  {
+    "text": "Python is an interpreted, high-level, general-purpose programming language created by Guido van Rossum.",
+    "start": 0.0,
+    "duration": 55.0
+  },
+  {
+    "text": "Python uses indentation to define code blocks instead of curly braces.",
+    "start": 60.0,
+    "duration": 55.0
+  },
+  {
+    "text": "Python lists are mutable ordered sequences; tuples are immutable ordered sequences.",
+    "start": 120.0,
+    "duration": 55.0
+  },
+  {
+    "text": "Dictionaries in Python store key-value pairs and are implemented as hash tables.",
+    "start": 180.0,
+    "duration": 55.0
+  },
+  {
+    "text": "Python's GIL (Global Interpreter Lock) prevents true multi-threading for CPU-bound tasks.",
+    "start": 240.0,
+    "duration": 55.0
+  },
+  {
+    "text": "List comprehensions provide a concise way to create lists: x times 2 for x in range 10.",
+    "start": 300.0,
+    "duration": 55.0
+  },
+  {
+    "text": "Python decorators are functions that modify the behaviour of other functions using the @ syntax.",
+    "start": 360.0,
+    "duration": 55.0
+  },
+  {
+    "text": "The __init__ method is the constructor in Python classes, called when an object is instantiated.",
+    "start": 420.0,
+    "duration": 55.0
+  }
+]

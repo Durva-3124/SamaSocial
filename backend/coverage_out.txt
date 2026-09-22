@@ -1,0 +1,334 @@
+.....FFFFF.............................................................. [ 40%]
+.F...................................................................... [ 81%]
+................................                                         [100%]
+================================== FAILURES ===================================
+___________________ test_chat_stream_emits_tokens_and_done ____________________
+
+session_with_chunk = (Session(id='sess1', created_at=datetime.datetime(2026, 9, 21, 18, 59, 19, 559701, tzinfo=datetime.timezone.utc), last...ne, topics=[], warnings=[])}, history=[]), <app.services.stores.vector_store.VectorStore object at 0x000001ED199BE710>)
+
+    @pytest.mark.asyncio
+    async def test_chat_stream_emits_tokens_and_done(session_with_chunk):
+        session, vs = session_with_chunk
+        llm = FakeLLM(script=["Here is the answer [S1]."])
+        emb = FakeEmbedder()
+    
+        events = []
+        async for chunk in chat_stream(session, "python loops", "normal", llm=llm, embedder=emb, vector_store=vs):
+            events.append(chunk)
+    
+        raw = "".join(events)
+        parsed = _parse_sse(raw)
+        event_names = [e["event"] for e in parsed]
+    
+>       assert "token" in event_names
+E       AssertionError: assert 'token' in ['error']
+
+tests\test_chat.py:68: AssertionError
+------------------------------ Captured log call ------------------------------
+ERROR    app.services.chat:chat.py:94 LLM streaming failed
+Traceback (most recent call last):
+  File "c:\Users\Dell\OneDrive\Desktop\SamaSocial\backend\app\services\chat.py", line 90, in chat_stream
+    async for token in _llm.stream_chat(messages, system=system):
+                       ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: 'async for' requires an object with __aiter__ method, got coroutine
+__________________ test_chat_stream_declined_when_no_chunks ___________________
+
+    @pytest.mark.asyncio
+    async def test_chat_stream_declined_when_no_chunks():
+        session = Session(id="empty")
+        vs = VectorStore()  # no chunks
+        llm = FakeLLM(script=["I don't know."])
+        emb = FakeEmbedder()
+    
+        events = []
+        async for chunk in chat_stream(session, "anything", "normal", llm=llm, embedder=emb, vector_store=vs):
+            events.append(chunk)
+    
+        parsed = _parse_sse("".join(events))
+>       done = next(e["data"] for e in parsed if e["event"] == "done")
+E       StopIteration
+
+tests\test_chat.py:87: StopIteration
+
+The above exception was the direct cause of the following exception:
+
+self = <Coroutine test_chat_stream_declined_when_no_chunks>
+
+    def runtest(self) -> None:
+        self.obj = wrap_in_sync(
+            # https://github.com/pytest-dev/pytest-asyncio/issues/596
+            self.obj,  # type: ignore[has-type]
+        )
+>       super().runtest()
+
+.venv\Lib\site-packages\pytest_asyncio\plugin.py:457: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\pytest_asyncio\plugin.py:929: in inner
+    _loop.run_until_complete(task)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ProactorEventLoop running=False closed=False debug=False>
+future = <Task finished name='Task-15' coro=<test_chat_stream_declined_when_no_chunks() done, defined at c:\Users\Dell\OneDrive\Desktop\SamaSocial\backend\tests\test_chat.py:75> exception=RuntimeError('coroutine raised StopIteration')>
+
+    def run_until_complete(self, future):
+        """Run until the Future is done.
+    
+        If the argument is a coroutine, it is wrapped in a Task.
+    
+        WARNING: It would be disastrous to call run_until_complete()
+        with the same coroutine twice -- it would wrap it in two
+        different Tasks and that can't be good.
+    
+        Return the Future's result, or raise its exception.
+        """
+        self._check_closed()
+        self._check_running()
+    
+        new_task = not futures.isfuture(future)
+        future = tasks.ensure_future(future, loop=self)
+        if new_task:
+            # An exception is raised if the future didn't complete, so there
+            # is no need to log the "destroy pending task" message
+            future._log_destroy_pending = False
+    
+        future.add_done_callback(_run_until_complete_cb)
+        try:
+            self.run_forever()
+        except:
+            if new_task and future.done() and not future.cancelled():
+                # The coroutine raised a BaseException. Consume the exception
+                # to not log a warning, the caller doesn't have access to the
+                # local task.
+                future.exception()
+            raise
+        finally:
+            future.remove_done_callback(_run_until_complete_cb)
+        if not future.done():
+            raise RuntimeError('Event loop stopped before Future completed.')
+    
+>       return future.result()
+E       RuntimeError: coroutine raised StopIteration
+
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py:725: RuntimeError
+------------------------------ Captured log call ------------------------------
+ERROR    app.services.chat:chat.py:94 LLM streaming failed
+Traceback (most recent call last):
+  File "c:\Users\Dell\OneDrive\Desktop\SamaSocial\backend\app\services\chat.py", line 90, in chat_stream
+    async for token in _llm.stream_chat(messages, system=system):
+                       ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: 'async for' requires an object with __aiter__ method, got coroutine
+__________ test_chat_stream_citations_emitted_when_label_in_response __________
+
+session_with_chunk = (Session(id='sess1', created_at=datetime.datetime(2026, 9, 21, 18, 59, 20, 322804, tzinfo=datetime.timezone.utc), last...ne, topics=[], warnings=[])}, history=[]), <app.services.stores.vector_store.VectorStore object at 0x000001ED199BA780>)
+
+    @pytest.mark.asyncio
+    async def test_chat_stream_citations_emitted_when_label_in_response(session_with_chunk):
+        session, vs = session_with_chunk
+        llm = FakeLLM(script=["Use [S1] for loops."])
+        emb = FakeEmbedder()
+    
+        events = []
+        async for chunk in chat_stream(session, "python loops", "normal", llm=llm, embedder=emb, vector_store=vs):
+            events.append(chunk)
+    
+        parsed = _parse_sse("".join(events))
+        citations_events = [e for e in parsed if e["event"] == "citations"]
+>       assert len(citations_events) == 1
+E       assert 0 == 1
+E        +  where 0 = len([])
+
+tests\test_chat.py:103: AssertionError
+------------------------------ Captured log call ------------------------------
+ERROR    app.services.chat:chat.py:94 LLM streaming failed
+Traceback (most recent call last):
+  File "c:\Users\Dell\OneDrive\Desktop\SamaSocial\backend\app\services\chat.py", line 90, in chat_stream
+    async for token in _llm.stream_chat(messages, system=system):
+                       ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: 'async for' requires an object with __aiter__ method, got coroutine
+______________________ test_chat_stream_history_updated _______________________
+
+session_with_chunk = (Session(id='sess1', created_at=datetime.datetime(2026, 9, 21, 18, 59, 20, 369076, tzinfo=datetime.timezone.utc), last...ne, topics=[], warnings=[])}, history=[]), <app.services.stores.vector_store.VectorStore object at 0x000001ED1DB7D130>)
+
+    @pytest.mark.asyncio
+    async def test_chat_stream_history_updated(session_with_chunk):
+        session, vs = session_with_chunk
+        llm = FakeLLM(script=["Answer [S1]."])
+        emb = FakeEmbedder()
+    
+        async for _ in chat_stream(session, "question", "normal", llm=llm, embedder=emb, vector_store=vs):
+            pass
+    
+>       assert len(session.history) == 2
+E       AssertionError: assert 0 == 2
+E        +  where 0 = len([])
+E        +    where [] = Session(id='sess1', created_at=datetime.datetime(2026, 9, 21, 18, 59, 20, 369076, tzinfo=datetime.timezone.utc), last_...'pdf', name='notes.pdf', status='ready', error=None, chunk_count=0, summary=None, topics=[], warnings=[])}, history=[]).history
+
+tests\test_chat.py:118: AssertionError
+------------------------------ Captured log call ------------------------------
+ERROR    app.services.chat:chat.py:94 LLM streaming failed
+Traceback (most recent call last):
+  File "c:\Users\Dell\OneDrive\Desktop\SamaSocial\backend\app\services\chat.py", line 90, in chat_stream
+    async for token in _llm.stream_chat(messages, system=system):
+                       ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: 'async for' requires an object with __aiter__ method, got coroutine
+_________________________ test_chat_route_streams_sse _________________________
+
+    def test_chat_route_streams_sse():
+        ss = SessionStore(ttl_minutes=10)
+        session = ss.create()
+        session.sources["src1"] = SourceRecord(
+            id="src1", type="pdf", name="doc.pdf", status="ready"
+        )
+        vs = VectorStore()
+        emb = FakeEmbedder()
+        llm = FakeLLM(script=["Hello [S1]."])
+    
+        with (
+            patch("app.api.chat.get_session_store", return_value=ss),
+            patch("app.services.chat.get_llm", return_value=llm),
+            patch("app.services.chat.get_embedder", return_value=emb),
+            patch("app.services.chat.get_vector_store", return_value=vs),
+        ):
+            client = TestClient(app)
+            resp = client.post(
+                f"/api/sessions/{session.id}/chat",
+                json={"message": "hello", "mode": "normal"},
+            )
+    
+        assert resp.status_code == 200
+        assert "text/event-stream" in resp.headers["content-type"]
+        parsed = _parse_sse(resp.text)
+>       assert any(e["event"] == "done" for e in parsed)
+E       assert False
+E        +  where False = any(<generator object test_chat_route_streams_sse.<locals>.<genexpr> at 0x000001ED199ABD30>)
+
+tests\test_chat.py:151: AssertionError
+------------------------------ Captured log call ------------------------------
+ERROR    app.services.chat:chat.py:94 LLM streaming failed
+Traceback (most recent call last):
+  File "c:\Users\Dell\OneDrive\Desktop\SamaSocial\backend\app\services\chat.py", line 90, in chat_stream
+    async for token in _llm.stream_chat(messages, system=system):
+                       ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: 'async for' requires an object with __aiter__ method, got coroutine
+___________________ test_stream_chat_429_raises_rate_limit ____________________
+
+    @pytest.mark.asyncio
+    async def test_stream_chat_429_raises_rate_limit() -> None:
+        _setup_env()
+        from httpx import HTTPStatusError, Request, Response as HResp
+        resp = MagicMock()
+        resp.status_code = 429
+        resp.headers = {"retry-after": "5"}
+        resp.raise_for_status = MagicMock(
+            side_effect=HTTPStatusError("429", request=Request("POST", BASE), response=HResp(429, headers={"retry-after": "5"}))
+        )
+        stream_cm = AsyncMock()
+        stream_cm.__aenter__ = AsyncMock(return_value=resp)
+        stream_cm.__aexit__ = AsyncMock(return_value=False)
+    
+        mock_client = AsyncMock()
+        mock_client.stream = MagicMock(return_value=stream_cm)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+    
+        with patch("app.services.llm.httpx.AsyncClient", return_value=mock_client):
+>           with pytest.raises(AppError) as exc_info:
+E           Failed: DID NOT RAISE <class 'app.core.errors.AppError'>
+
+tests\test_llm.py:159: Failed
+------------------------------ Captured log call ------------------------------
+WARNING  app.services.llm:llm.py:114 Rate limited, retrying after 5s
+============================== warnings summary ===============================
+.venv\Lib\site-packages\starlette\testclient.py:40
+  c:\Users\Dell\OneDrive\Desktop\SamaSocial\backend\.venv\Lib\site-packages\starlette\testclient.py:40: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = typing.Callable[[], typing.ContextManager[anyio.abc.BlockingPortal]]
+
+<frozen importlib._bootstrap>:488
+<frozen importlib._bootstrap>:488
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type SwigPyPacked has no __module__ attribute
+
+<frozen importlib._bootstrap>:488
+<frozen importlib._bootstrap>:488
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type SwigPyObject has no __module__ attribute
+
+<frozen importlib._bootstrap>:488
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type swigvarlink has no __module__ attribute
+
+tests/test_chat.py::test_chat_stream_emits_tokens_and_done
+tests/test_chat.py::test_chat_stream_declined_when_no_chunks
+tests/test_chat.py::test_chat_stream_citations_emitted_when_label_in_response
+tests/test_chat.py::test_chat_stream_history_updated
+tests/test_chat.py::test_chat_route_streams_sse
+  c:\Users\Dell\OneDrive\Desktop\SamaSocial\backend\app\services\chat.py:90: RuntimeWarning: coroutine 'FakeLLM.stream_chat' was never awaited
+    async for token in _llm.stream_chat(messages, system=system):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_llm.py::test_stream_chat_yields_tokens
+  C:\Users\Dell\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py:750: RuntimeWarning: coroutine method 'aclose' of '_mock_stream_response.<locals>._aiter_lines' was never awaited
+    self._ready.clear()
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_web.py::test_oversized_body_raises_fetch_failed
+  C:\Users\Dell\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py:750: RuntimeWarning: coroutine method 'aclose' of 'test_oversized_body_raises_fetch_failed.<locals>._aiter_bytes' was never awaited
+    self._ready.clear()
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+
+---------- coverage: platform win32, python 3.13.12-final-0 ----------
+Name                                   Stmts   Miss  Cover   Missing
+--------------------------------------------------------------------
+app\__init__.py                            0      0   100%
+app\api\__init__.py                        0      0   100%
+app\api\bonus.py                          31      2    94%   40, 45
+app\api\chat.py                           16      0   100%
+app\api\courses.py                       131     29    78%   34-35, 38, 41, 45-48, 52, 87-88, 126-141, 183-189, 224
+app\api\sessions.py                       40      0   100%
+app\core\__init__.py                       0      0   100%
+app\core\config.py                        19      0   100%
+app\core\errors.py                        10      0   100%
+app\core\url_safety.py                    26      3    88%   23, 37-38
+app\main.py                               21      0   100%
+app\models\__init__.py                     0      0   100%
+app\models\chunk.py                       31      0   100%
+app\models\course.py                      42      0   100%
+app\models\llm.py                          5      0   100%
+app\models\session.py                     21      0   100%
+app\services\__init__.py                   0      0   100%
+app\services\chat.py                      62     17    73%   70-73, 91-92, 99-118
+app\services\chunking.py                  36      0   100%
+app\services\course_chat.py               43      9    79%   41-44, 62, 80-83
+app\services\embeddings.py                38     16    58%   26-28, 40-42, 45-51, 55, 59-60
+app\services\ingest_manager.py            90     71    21%   25-46, 64-93, 109-139, 155-156
+app\services\ingestion\__init__.py         0      0   100%
+app\services\ingestion\base.py             9      0   100%
+app\services\ingestion\pdf.py             41      2    95%   24-25
+app\services\ingestion\pptx.py            68      1    99%   24
+app\services\ingestion\web.py             71     10    86%   42-45, 85, 87, 90-91, 119, 132
+app\services\ingestion\youtube.py         94     40    57%   30-32, 41-83, 88-98, 164
+app\services\intake.py                    42      5    88%   64, 66-67, 69-70
+app\services\llm.py                      101     15    85%   37-41, 120, 129-131, 133, 157-158, 160-161, 198
+app\services\planner.py                   19      0   100%
+app\services\quiz.py                      24      0   100%
+app\services\resources.py                106      9    92%   76-78, 120-122, 132, 160, 163
+app\services\retrieval.py                 21      1    95%   47
+app\services\stores\__init__.py            0      0   100%
+app\services\stores\course_store.py       48      0   100%
+app\services\stores\session_store.py      40      0   100%
+app\services\stores\vector_store.py       49      5    90%   40-41, 67, 80-81
+app\services\summarise.py                 21      0   100%
+app\services\syllabus.py                  45      0   100%
+--------------------------------------------------------------------
+TOTAL                                   1461    235    84%
+
+=========================== short test summary info ===========================
+FAILED tests/test_chat.py::test_chat_stream_emits_tokens_and_done - Assertion...
+FAILED tests/test_chat.py::test_chat_stream_declined_when_no_chunks - Runtime...
+FAILED tests/test_chat.py::test_chat_stream_citations_emitted_when_label_in_response
+FAILED tests/test_chat.py::test_chat_stream_history_updated - AssertionError:...
+FAILED tests/test_chat.py::test_chat_route_streams_sse - assert False
+FAILED tests/test_llm.py::test_stream_chat_429_raises_rate_limit - Failed: DI...
+6 failed, 170 passed, 1 deselected, 13 warnings in 25.17s

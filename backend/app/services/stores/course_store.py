@@ -1,4 +1,5 @@
 """In-memory course store with TTL eviction."""
+import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -23,6 +24,7 @@ class CourseRecord:
         self.plan_version: int = 0
         self.messages: list[Message] = []
         self.last_active: datetime = datetime.now(UTC)
+        self.lock: asyncio.Lock = asyncio.Lock()  # guards plan + plan_version mutations
 
     def touch(self) -> None:
         """Update last_active timestamp."""

@@ -7,6 +7,7 @@ import {
   uploadFile,
   type SourceRecord,
 } from "../api/sessions";
+import { ApiError } from "../api/client";
 
 export interface UseSessionReturn {
   sessionId: string | null;
@@ -27,89 +28,125 @@ export function useSession(): UseSessionReturn {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sidRef = useRef<string | null>(null);
 
-  const fetchSources = useCallback(async (sid: string) => {
-    try {
-      const s = await listSources(sid);
-      setSources(s);
-    } catch {
-      // silent — polling will retry
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
     }
   }, []);
 
   const startPolling = useCallback(
     (sid: string) => {
-      if (pollRef.current) clearInterval(pollRef.current);
-      pollRef.current = setInterval(() => fetchSources(sid), POLL_INTERVAL);
+      stopPolling();
+      pollRef.current = setInterval(async () => {
+        try {
+          const s = await listSources(sid);
+          setSources(s);
+          if (s.length > 0 && s.every((src) => src.status !== "processing")) {
+            stopPolling();
+          }
+        } catch (e: unknown) {
+          if (e instanceof ApiError && e.status === 404) {
+            stopPolling();
+            // Session expired — create a new one and notify the user
+            const newSid = await createSession();
+            sidRef.current = newSid;
+            setSessionId(newSid);
+            setSources([]);
+            setError("Your session expired, please re-add sources.");
+          }
+          // other errors: silent, polling will retry
+        }
+      }, POLL_INTERVAL);
     },
-    [fetchSources],
+    [stopPolling],
   );
 
+  // Bootstrap: create initial session
   useEffect(() => {
     let cancelled = false;
     createSession()
       .then((sid) => {
         if (cancelled) return;
+        sidRef.current = sid;
         setSessionId(sid);
-        startPolling(sid);
+        // Don't start polling until there's something to poll
       })
       .catch((e: Error) => setError(e.message));
     return () => {
       cancelled = true;
-      if (pollRef.current) clearInterval(pollRef.current);
+      stopPolling();
     };
-  }, [startPolling]);
+  }, [stopPolling]);
 
   const addFile = useCallback(
     async (file: File) => {
-      if (!sessionId) return;
+      const sid = sidRef.current;
+      if (!sid) return;
       setLoading(true);
       setError(null);
       try {
-        await uploadFile(sessionId, file);
-        await fetchSources(sessionId);
+        await uploadFile(sid, file);
+        const s = await listSources(sid);
+        setSources(s);
+        // Resume polling if any source is still processing
+        if (s.some((src) => src.status === "processing")) {
+          startPolling(sid);
+        }
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : "Upload failed");
       } finally {
         setLoading(false);
       }
     },
-    [sessionId, fetchSources],
+    [startPolling],
   );
 
   const addUrlSource = useCallback(
     async (url: string) => {
-      if (!sessionId) return;
+      const sid = sidRef.current;
+      if (!sid) return;
       setLoading(true);
       setError(null);
       try {
-        await addUrl(sessionId, url);
-        await fetchSources(sessionId);
+        await addUrl(sid, url);
+        const s = await listSources(sid);
+        setSources(s);
+        if (s.some((src) => src.status === "processing")) {
+          startPolling(sid);
+        }
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : "Failed to add URL");
       } finally {
         setLoading(false);
       }
     },
-    [sessionId, fetchSources],
+    [startPolling],
   );
 
-  const removeSource = useCallback(
-    async (id: string) => {
-      if (!sessionId) return;
-      try {
-        await deleteSource(sessionId, id);
-        setSources((prev) => prev.filter((s) => s.id !== id));
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : "Delete failed");
-      }
-    },
-    [sessionId],
-  );
+  const removeSource = useCallback(async (id: string) => {
+    const sid = sidRef.current;
+    if (!sid) return;
+    try {
+      await deleteSource(sid, id);
+      setSources((prev) => prev.filter((s) => s.id !== id));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Delete failed");
+    }
+  }, []);
 
   const refreshSources = useCallback(() => {
-    if (sessionId) fetchSources(sessionId);
-  }, [sessionId, fetchSources]);
+    const sid = sidRef.current;
+    if (!sid) return;
+    listSources(sid)
+      .then((s) => {
+        setSources(s);
+        if (s.some((src) => src.status === "processing")) startPolling(sid);
+      })
+      .catch(() => {/* silent */});
+  }, [startPolling]);
 
   return { sessionId, sources, loading, error, addFile, addUrlSource, removeSource, refreshSources };
 }

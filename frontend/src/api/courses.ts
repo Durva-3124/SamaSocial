@@ -1,42 +1,42 @@
-import { apiFetch } from "./client";
+import { apiFetch, BASE_URL } from "./client";
 
 export interface Resource {
+  id: string;
   title: string;
   url: string;
   type: "video" | "article" | "exercise" | "other";
-  description: string;
+  validated: boolean;
 }
 
 export interface Lesson {
   id: string;
   title: string;
-  summary: string;
   duration_minutes: number;
+  objectives: string[];
   resources: Resource[];
 }
 
 export interface Module {
   id: string;
   title: string;
-  description: string;
   lessons: Lesson[];
 }
 
 export interface Course {
   title: string;
   description: string;
+  level: "beginner" | "intermediate" | "advanced";
   total_weeks: number;
-  hours_per_week: number;
   modules: Module[];
 }
 
 export interface IntakeData {
   topic: string | null;
-  goal: string | null;
-  level: string | null;
-  weeks: number | null;
-  hours_per_week: number | null;
-  style: string | null;
+  level: "beginner" | "intermediate" | "advanced" | null;
+  duration_weeks: number | null;
+  goals: string[];
+  prerequisites: string[];
+  extra: Record<string, unknown>;
 }
 
 export interface CourseState {
@@ -68,8 +68,6 @@ export async function patchPlan(
 }
 
 export async function exportCourse(cid: string): Promise<void> {
-  const BASE_URL =
-    (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8000/api";
   const a = document.createElement("a");
   a.href = `${BASE_URL}/courses/${cid}/export`;
   a.download = "course.json";
@@ -81,8 +79,6 @@ export async function uploadSyllabus(
   file: File,
   replace = false,
 ): Promise<ReadableStreamDefaultReader<Uint8Array>> {
-  const BASE_URL =
-    (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8000/api";
   const form = new FormData();
   form.append("file", file);
   const res = await fetch(
@@ -97,8 +93,6 @@ export async function refreshResources(
   cid: string,
   lessonId: string | null,
 ): Promise<ReadableStreamDefaultReader<Uint8Array>> {
-  const BASE_URL =
-    (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8000/api";
   const res = await fetch(`${BASE_URL}/courses/${cid}/resources/refresh`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -108,19 +102,16 @@ export async function refreshResources(
   return res.body.getReader();
 }
 
-const BASE_URL =
-  (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8000/api";
-
 export function openCourseStream(
   cid: string,
   message: string,
+  signal: AbortSignal,
 ): ReadableStreamDefaultReader<Uint8Array> {
-  const ctrl = new AbortController();
   const req = fetch(`${BASE_URL}/courses/${cid}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message }),
-    signal: ctrl.signal,
+    signal,
   });
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -136,9 +127,6 @@ export function openCourseStream(
         controller.enqueue(value);
       }
       controller.close();
-    },
-    cancel() {
-      ctrl.abort();
     },
   });
   return stream.getReader();

@@ -75,6 +75,21 @@ class VectorStore:
         top_indices = np.argsort(scores)[::-1][:top_k]
         return [(filtered_chunks[i], float(scores[i])) for i in top_indices]
 
+    def all_chunks(
+        self,
+        session_id: str,
+        source_ids: list[str] | None = None,
+    ) -> list[Chunk]:
+        """Return all chunks for a session, optionally filtered by source_ids."""
+        with self._lock:
+            entry = self._data.get(session_id)
+        if entry is None:
+            return []
+        chunks, _ = entry
+        if source_ids is not None:
+            return [c for c in chunks if c.source_id in source_ids]
+        return list(chunks)
+
     def clear_session(self, session_id: str) -> None:
         """Remove all data for a session."""
         with self._lock:

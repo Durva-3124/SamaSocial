@@ -68,6 +68,15 @@ function EditableText({ value, onCommit, className, multiline }: EditableTextPro
   );
 }
 
+function isHttpUrl(url: string): boolean {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 interface LessonRowProps {
   lesson: Lesson;
   modIdx: number;
@@ -101,27 +110,26 @@ function LessonRow({ lesson, modIdx, lesIdx, onPatch, onRefresh }: LessonRowProp
         </button>
       </div>
 
-      {open && (
-        <div className="pv-lesson-body">
-          <EditableText
-            value={lesson.summary}
-            onCommit={(v) => onPatch(`${base}/summary`, v)}
-            className="pv-summary"
-            multiline
-          />
-          {lesson.resources.length > 0 && (
-            <ul className="pv-resources">
-              {lesson.resources.map((r, ri) => (
-                <li key={ri} className="pv-resource">
-                  <span className={`pv-resource-type pv-resource-type--${r.type}`}>{r.type}</span>
-                  <a href={r.url} target="_blank" rel="noreferrer" className="pv-resource-link">
-                    {r.title}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+      {open && lesson.resources.length > 0 && (
+        <ul className="pv-resources">
+          {lesson.resources.map((r) => (
+            <li key={r.id} className="pv-resource">
+              <span className={`pv-resource-type pv-resource-type--${r.type}`}>{r.type}</span>
+              {isHttpUrl(r.url) ? (
+                <a
+                  href={r.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="pv-resource-link"
+                >
+                  {r.title}
+                </a>
+              ) : (
+                <span className="pv-resource-link">{r.title}</span>
+              )}
+            </li>
+          ))}
+        </ul>
       )}
     </li>
   );
@@ -150,26 +158,18 @@ function ModuleCard({ mod, modIdx, onPatch, onRefresh }: ModuleCardProps) {
         />
       </div>
       {open && (
-        <>
-          <EditableText
-            value={mod.description}
-            onCommit={(v) => onPatch(`/modules/${modIdx}/description`, v)}
-            className="pv-module-desc"
-            multiline
-          />
-          <ul className="pv-lessons">
-            {mod.lessons.map((les, li) => (
-              <LessonRow
-                key={les.id}
-                lesson={les}
-                modIdx={modIdx}
-                lesIdx={li}
-                onPatch={onPatch}
-                onRefresh={onRefresh}
-              />
-            ))}
-          </ul>
-        </>
+        <ul className="pv-lessons">
+          {mod.lessons.map((les, li) => (
+            <LessonRow
+              key={les.id}
+              lesson={les}
+              modIdx={modIdx}
+              lesIdx={li}
+              onPatch={onPatch}
+              onRefresh={onRefresh}
+            />
+          ))}
+        </ul>
       )}
     </div>
   );
@@ -195,8 +195,6 @@ export default function PlanViewer({ plan, planVersion, onPatch, onExport, onRef
         />
         <div className="pv-meta">
           <span>{plan.total_weeks} weeks</span>
-          <span>·</span>
-          <span>{plan.hours_per_week}h/week</span>
           <span>·</span>
           <span>{plan.modules.length} modules</span>
         </div>

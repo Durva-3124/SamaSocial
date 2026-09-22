@@ -1,4 +1,4 @@
-import { apiFetch } from "./client";
+import { apiFetch, BASE_URL } from "./client";
 
 export interface SourceRecord {
   id: string;
@@ -75,22 +75,18 @@ export async function fetchQuiz(
   return data.questions;
 }
 
-const BASE_URL =
-  (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8000/api";
-
 export function openChatStream(
   sid: string,
   message: string,
   mode: "normal" | "simple",
+  signal: AbortSignal,
 ): ReadableStreamDefaultReader<Uint8Array> {
-  const ctrl = new AbortController();
   const req = fetch(`${BASE_URL}/sessions/${sid}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message, mode }),
-    signal: ctrl.signal,
+    signal,
   });
-  // Return a reader; caller drives consumption
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const res = await req;
@@ -105,9 +101,6 @@ export function openChatStream(
         controller.enqueue(value);
       }
       controller.close();
-    },
-    cancel() {
-      ctrl.abort();
     },
   });
   return stream.getReader();

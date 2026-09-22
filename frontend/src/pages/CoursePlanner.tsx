@@ -1,12 +1,12 @@
 import { useCallback, useState } from "react";
-import { exportCourse, refreshResources } from "../api/courses";
+import { exportCourse } from "../api/courses";
 import CourseChatPanel from "../components/CourseChatPanel";
 import PlanViewer from "../components/PlanViewer";
 import { useCourse } from "../hooks/useCourse";
 import "./CoursePlanner.css";
 
 export default function CoursePlanner() {
-  const { courseId, intake, missing, plan, planVersion, messages, streaming, error, sendMessage, patch, uploadSyllabusFile } =
+  const { courseId, intake, missing, plan, planVersion, messages, streaming, error, sendMessage, stop, patch, uploadSyllabusFile, refreshResources } =
     useCourse();
   const [refreshing, setRefreshing] = useState(false);
   const [confirmReplace, setConfirmReplace] = useState(false);
@@ -39,22 +39,12 @@ export default function CoursePlanner() {
       if (!courseId) return;
       setRefreshing(true);
       try {
-        const reader = await refreshResources(courseId, lessonId);
-        const decoder = new TextDecoder();
-        let buffer = "";
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          // plan_update events are handled server-side; we just drain the stream
-        }
-      } catch {
-        // silent — plan already updated via SSE if partial
+        await refreshResources(lessonId);
       } finally {
         setRefreshing(false);
       }
     },
-    [courseId],
+    [courseId, refreshResources],
   );
 
   return (
@@ -67,6 +57,7 @@ export default function CoursePlanner() {
           missing={missing ?? []}
           error={error === "PLAN_EXISTS" ? null : error}
           onSend={sendMessage}
+          onStop={stop}
           onSyllabusUpload={handleSyllabusUpload}
         />
         {confirmReplace && (

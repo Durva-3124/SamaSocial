@@ -9,7 +9,7 @@ from app.api.bonus import router as bonus_router
 from app.api.chat import router as chat_router
 from app.api.courses import router as courses_router
 from app.api.sessions import router as sessions_router
-from app.core.errors import AppError, app_error_handler
+from app.core.errors import AppError, app_error_handler, unhandled_error_handler
 
 logging.basicConfig(level=logging.INFO)
 
@@ -26,6 +26,7 @@ app.add_middleware(
 )
 
 app.add_exception_handler(AppError, app_error_handler)
+app.add_exception_handler(Exception, unhandled_error_handler)
 app.include_router(sessions_router)
 app.include_router(chat_router)
 app.include_router(bonus_router)

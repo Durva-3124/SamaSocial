@@ -1,7 +1,9 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { openChatStream, type CitationItem } from "../api/sessions";
+import { SseParser } from "../lib/sse";
 
 export interface ChatMessage {
+  id: string;
   role: "user" | "assistant";
   content: string;
   citations?: CitationItem[];
@@ -13,82 +15,90 @@ export interface UseChatReturn {
   streaming: boolean;
   error: string | null;
   sendMessage: (sessionId: string, text: string, mode: "normal" | "simple") => Promise<void>;
+  stop: () => void;
+}
+
+let _msgCounter = 0;
+function nextId() {
+  return `msg-${++_msgCounter}`;
 }
 
 export function useChat(): UseChatReturn {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const stop = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setStreaming(false);
+  }, []);
+
+  useEffect(() => () => { abortRef.current?.abort(); }, []);
 
   const sendMessage = useCallback(
     async (sessionId: string, text: string, mode: "normal" | "simple") => {
-      setError(null);
-      setMessages((prev) => [...prev, { role: "user", content: text }]);
+      abortRef.current?.abort();
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
 
-      const assistantIdx = messages.length + 1;
-      setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+      setError(null);
+
+      const userId = nextId();
+      const assistantId = nextId();
+      setMessages((prev) => [
+        ...prev,
+        { id: userId, role: "user", content: text },
+        { id: assistantId, role: "assistant", content: "" },
+      ]);
       setStreaming(true);
 
-      const decoder = new TextDecoder();
-      let buffer = "";
+      const parser = new SseParser();
       let fullContent = "";
 
       try {
-        const reader = openChatStream(sessionId, text, mode);
+        const reader = openChatStream(sessionId, text, mode, ctrl.signal);
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-
-          const blocks = buffer.split("\n\n");
-          buffer = blocks.pop() ?? "";
-
-          for (const block of blocks) {
-            const eventLine = block.split("\n").find((l) => l.startsWith("event: "));
-            const dataLine = block.split("\n").find((l) => l.startsWith("data: "));
-            if (!eventLine || !dataLine) continue;
-
-            const event = eventLine.slice(7).trim();
-            const data = JSON.parse(dataLine.slice(6));
-
+          for (const { event, data } of parser.push(value)) {
             if (event === "token") {
               fullContent += data.text as string;
-              setMessages((prev) => {
-                const next = [...prev];
-                next[assistantIdx] = { ...next[assistantIdx], content: fullContent };
-                return next;
-              });
+              const snapshot = fullContent;
+              setMessages((prev) =>
+                prev.map((m) => (m.id === assistantId ? { ...m, content: snapshot } : m)),
+              );
             } else if (event === "citations") {
-              setMessages((prev) => {
-                const next = [...prev];
-                next[assistantIdx] = {
-                  ...next[assistantIdx],
-                  citations: data.items as CitationItem[],
-                };
-                return next;
-              });
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId
+                    ? { ...m, citations: data.items as CitationItem[] }
+                    : m,
+                ),
+              );
             } else if (event === "done") {
-              setMessages((prev) => {
-                const next = [...prev];
-                next[assistantIdx] = {
-                  ...next[assistantIdx],
-                  declined: data.declined as boolean,
-                };
-                return next;
-              });
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId ? { ...m, declined: data.declined as boolean } : m,
+                ),
+              );
             } else if (event === "error") {
               setError(data.message as string);
             }
           }
         }
       } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : "Chat failed");
+        if ((e as Error)?.name !== "AbortError") {
+          setError(e instanceof Error ? e.message : "Chat failed");
+        }
       } finally {
+        if (abortRef.current === ctrl) abortRef.current = null;
         setStreaming(false);
       }
     },
-    [messages.length],
+    [],
   );
 
-  return { messages, streaming, error, sendMessage };
+  return { messages, streaming, error, sendMessage, stop };
 }

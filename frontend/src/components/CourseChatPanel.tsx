@@ -10,10 +10,20 @@ interface Props {
   missing: string[];
   error: string | null;
   onSend: (text: string) => void;
+  onStop: () => void;
   onSyllabusUpload: (file: File, replace: boolean) => void;
 }
 
-export default function CourseChatPanel({ courseId, messages, streaming, missing, error, onSend, onSyllabusUpload }: Props) {
+export default function CourseChatPanel({
+  courseId,
+  messages,
+  streaming,
+  missing,
+  error,
+  onSend,
+  onStop,
+  onSyllabusUpload,
+}: Props) {
   const [input, setInput] = useState("");
   const [confirmReplace, setConfirmReplace] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -59,18 +69,23 @@ export default function CourseChatPanel({ courseId, messages, streaming, missing
         <div className="ccp-confirm">
           <span>A plan already exists. Replace it?</span>
           <button className="btn btn--primary" onClick={handleConfirmReplace}>Replace</button>
-          <button className="btn btn--secondary" onClick={() => { setConfirmReplace(false); setPendingFile(null); }}>Cancel</button>
+          <button
+            className="btn btn--secondary"
+            onClick={() => { setConfirmReplace(false); setPendingFile(null); }}
+          >
+            Cancel
+          </button>
         </div>
       )}
 
-      <div className="ccp-messages">
+      <div className="ccp-messages" aria-live="polite" aria-label="Course chat messages">
         {messages.length === 0 && (
           <p className="ccp-empty">
             Tell me what you want to learn — topic, goal, level, timeline.
           </p>
         )}
-        {messages.map((msg, i) => (
-          <div key={i} className={`ccp-bubble ccp-bubble--${msg.role}`}>
+        {messages.map((msg) => (
+          <div key={msg.id} className={`ccp-bubble ccp-bubble--${msg.role}`}>
             <ReactMarkdown>
               {msg.content || (msg.role === "assistant" && streaming ? "▌" : "")}
             </ReactMarkdown>
@@ -80,7 +95,6 @@ export default function CourseChatPanel({ courseId, messages, streaming, missing
         <div ref={bottomRef} />
       </div>
 
-      {/* Syllabus upload slot */}
       <input
         ref={fileRef}
         type="file"
@@ -108,13 +122,19 @@ export default function CourseChatPanel({ courseId, messages, streaming, missing
           onChange={(e) => setInput(e.target.value)}
           disabled={streaming}
         />
-        <button
-          className="btn btn--primary"
-          type="submit"
-          disabled={streaming || !input.trim()}
-        >
-          {streaming ? "…" : "Send"}
-        </button>
+        {streaming ? (
+          <button className="btn btn--secondary" type="button" onClick={onStop}>
+            Stop
+          </button>
+        ) : (
+          <button
+            className="btn btn--primary"
+            type="submit"
+            disabled={!input.trim()}
+          >
+            Send
+          </button>
+        )}
       </form>
     </section>
   );

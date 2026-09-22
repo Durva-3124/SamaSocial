@@ -9,7 +9,7 @@ import "./LearningAssistant.css";
 
 export default function LearningAssistant() {
   const { sessionId, sources, loading, error, addFile, addUrlSource, removeSource } = useSession();
-  const { messages, streaming, error: chatError, sendMessage } = useChat();
+  const { messages, streaming, error: chatError, sendMessage, stop } = useChat();
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[] | null>(null);
   const [quizLoading, setQuizLoading] = useState(false);
   const [quizError, setQuizError] = useState<string | null>(null);
@@ -65,6 +65,7 @@ export default function LearningAssistant() {
           error={chatError}
           disabled={!hasReady}
           onSend={handleSend}
+          onStop={stop}
         />
       </div>
 

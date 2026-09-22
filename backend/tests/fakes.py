@@ -26,22 +26,18 @@ class FakeLLM:
     def _record(self, messages: list[Message], system: str | None) -> None:
         self.calls.append({"messages": messages, "system": system})
 
-    async def stream_chat(
+    async def stream_chat(  # type: ignore[override]
         self,
         messages: list[Message],
         system: str | None = None,
         temperature: float = 0.2,
     ) -> AsyncIterator[str]:
+        """Real async generator — yields in ~4-char pieces to simulate streaming."""
         self._record(messages, system)
         text = self._next()
-
-        async def _gen() -> AsyncIterator[str]:
-            # yield in ~4-char pieces to simulate streaming
-            chunk_size = 4
-            for i in range(0, len(text), chunk_size):
-                yield text[i : i + chunk_size]
-
-        return _gen()
+        chunk_size = 4
+        for i in range(0, len(text), chunk_size):
+            yield text[i : i + chunk_size]
 
     async def complete(
         self,

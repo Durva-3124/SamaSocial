@@ -9,49 +9,13 @@ from pydantic import BaseModel
 
 from app.core.config import get_settings
 from app.core.errors import AppError
-from app.models.course import Course, missing_intake_fields
+from app.models.course import missing_intake_fields
 from app.services.course_chat import course_chat_stream
+from app.services.plan_ops import apply_patch
 from app.services.stores.course_store import get_course_store
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
-
-
-# ── helpers ───────────────────────────────────────────────────────────────────
-
-def _apply_json_pointer(plan: Course, pointer: str, value: object) -> Course:
-    """Apply an RFC 6901 JSON Pointer patch to the plan and return updated Course.
-
-    Supports simple paths like /title, /modules/0/title, /modules/0/lessons/1/title.
-    """
-    data = json.loads(plan.model_dump_json())
-    parts = [p.replace("~1", "/").replace("~0", "~") for p in pointer.lstrip("/").split("/")]
-    node = data
-    for part in parts[:-1]:
-        if isinstance(node, list):
-            try:
-                node = node[int(part)]
-            except (IndexError, ValueError) as exc:
-                raise AppError("INVALID_POINTER", f"Invalid JSON pointer: {pointer}", 400) from exc
-        elif isinstance(node, dict):
-            if part not in node:
-                raise AppError("INVALID_POINTER", f"Key {part!r} not found.", 400)
-            node = node[part]
-        else:
-            raise AppError("INVALID_POINTER", f"Cannot traverse into {type(node).__name__}.", 400)
-
-    last = parts[-1]
-    if isinstance(node, list):
-        try:
-            node[int(last)] = value
-        except (IndexError, ValueError) as exc:
-            raise AppError("INVALID_POINTER", f"Invalid index {last!r}.", 400) from exc
-    elif isinstance(node, dict):
-        node[last] = value
-    else:
-        raise AppError("INVALID_POINTER", "Cannot set value on a scalar.", 400)
-
-    return Course.model_validate(data)
 
 
 # ── routes ────────────────────────────────────────────────────────────────────
@@ -103,8 +67,9 @@ async def patch_plan(cid: str, body: PatchBody) -> dict:
     record = get_course_store().get(cid)
     if record.plan is None:
         raise AppError("NO_PLAN", "No plan exists yet for this course.", 400)
-    record.plan = _apply_json_pointer(record.plan, body.path, body.value)
-    record.plan_version += 1
+    async with record.lock:
+        record.plan = apply_patch(record.plan, body.path, body.value)
+        record.plan_version += 1
     return {"plan": record.plan.model_dump(), "plan_version": record.plan_version}
 
 
@@ -118,26 +83,31 @@ def _sse(event: str, data: dict) -> str:
 
 async def _refresh_stream(cid: str, lesson_id: str | None) -> AsyncIterator[str]:
     """SSE generator for resource refresh."""
-    from app.services.resources import enrich_course
+    from app.services.resources import enrich_course, RESOURCES_UNAVAILABLE
     record = get_course_store().get(cid)
     if record.plan is None:
         yield _sse("error", {"code": "NO_PLAN", "message": "No plan to enrich."})
         return
     try:
-        updated_plan, changed_ids = await enrich_course(
-            record.plan, lesson_id
-        )
-        record.plan = updated_plan
-        record.plan_version += 1
-        yield _sse("plan_update", {
-            "plan": updated_plan.model_dump(),
-            "plan_version": record.plan_version,
-            "changed_ids": changed_ids,
-        })
+        result = await enrich_course(record.plan, lesson_id)
     except Exception as exc:
         logger.exception("Resource refresh failed")
         yield _sse("error", {"code": "REFRESH_ERROR", "message": str(exc)})
         return
+    if result is RESOURCES_UNAVAILABLE:
+        yield _sse("resources_unavailable", {
+            "reason": "No YOUTUBE_API_KEY or TAVILY_API_KEY configured."
+        })
+        yield _sse("done", {})
+        return
+    updated_plan, changed_ids = result
+    record.plan = updated_plan
+    record.plan_version += 1
+    yield _sse("plan_update", {
+        "plan": updated_plan.model_dump(),
+        "plan_version": record.plan_version,
+        "changed_ids": changed_ids,
+    })
     yield _sse("done", {})
 
 

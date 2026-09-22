@@ -33,15 +33,17 @@ class SessionStore:
         with self._lock:
             self._evict()
             session = self._sessions.get(session_id)
+            if session is not None:
+                session.last_active = datetime.now(UTC)
         if session is None:
             raise AppError("SESSION_NOT_FOUND", f"Session {session_id!r} not found", 404)
-        session.last_active = datetime.now(UTC)
         return session
 
     def delete(self, session_id: str) -> None:
         """Remove a session if it exists (idempotent)."""
         with self._lock:
             self._sessions.pop(session_id, None)
+        self._free_vectors(session_id)
 
     def _evict(self) -> None:
         """Remove sessions whose last_active is older than TTL (call under lock)."""
@@ -50,6 +52,15 @@ class SessionStore:
         for sid in expired:
             logger.debug("Evicting expired session %s", sid)
             del self._sessions[sid]
+            self._free_vectors(sid)
+
+    def _free_vectors(self, session_id: str) -> None:
+        """Delete embeddings for a session from the vector store."""
+        try:
+            from app.services.stores.vector_store import get_vector_store
+            get_vector_store().clear_session(session_id)
+        except Exception:
+            logger.debug("Vector store cleanup skipped for %s", session_id)
 
 
 @lru_cache

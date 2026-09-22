@@ -1,4 +1,5 @@
 """Provider-agnostic LLM client with streaming and validated JSON output."""
+import asyncio as _asyncio
 import json
 import logging
 import re
@@ -39,6 +40,8 @@ def _map_http_error(exc: httpx.HTTPStatusError) -> AppError:
         msg = f"LLM rate limit hit.{f' Retry after {retry}s.' if retry else ''}"
         return AppError("LLM_RATE_LIMIT", msg, 502)
     return AppError("LLM_ERROR", f"LLM provider returned {status}.", 502)
+
+
 
 
 @runtime_checkable
@@ -87,40 +90,66 @@ class OpenAICompatClient:
         system: str | None = None,
         temperature: float = 0.2,
     ) -> AsyncIterator[str]:
-        """Stream chat completion, yielding delta text chunks."""
+        """Stream chat completion, yielding delta text chunks.
+
+        Retries once on 429 only when Retry-After <= 10 s and no token has
+        been yielded yet.  On a second 429, or Retry-After > 10 s, raises
+        AppError("LLM_RATE_LIMIT").
+        """
+        _MAX_RETRY_WAIT = 10
         payload = {
             "model": self._model,
             "messages": _messages_payload(messages, system),
             "temperature": temperature,
             "stream": True,
         }
-        try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
-                async with client.stream(
-                    "POST",
-                    f"{self._base}/chat/completions",
-                    headers=self._headers,
-                    json=payload,
-                ) as resp:
-                    try:
-                        resp.raise_for_status()
-                    except httpx.HTTPStatusError as exc:
-                        raise _map_http_error(exc) from exc
-                    async for line in resp.aiter_lines():
-                        if not line.startswith("data:"):
-                            continue
-                        data = line[5:].strip()
-                        if data == "[DONE]":
-                            break
+
+        for attempt in range(2):
+            _retry = False
+            try:
+                async with httpx.AsyncClient(timeout=self._timeout) as client:
+                    async with client.stream(
+                        "POST",
+                        f"{self._base}/chat/completions",
+                        headers=self._headers,
+                        json=payload,
+                    ) as resp:
                         try:
-                            chunk = json.loads(data)
-                            delta = chunk["choices"][0]["delta"].get("content") or ""
-                            if delta:
-                                yield delta
-                        except (KeyError, json.JSONDecodeError):
-                            continue
-        except httpx.TimeoutException as exc:
-            raise AppError("LLM_TIMEOUT", "LLM request timed out.", 502) from exc
+                            resp.raise_for_status()
+                        except httpx.HTTPStatusError as exc:
+                            if exc.response.status_code == 429 and attempt == 0:
+                                wait = int(exc.response.headers.get("retry-after", "2"))
+                                if wait > _MAX_RETRY_WAIT:
+                                    raise _map_http_error(exc) from exc
+                                logger.warning("Rate limited, retrying after %ss", wait)
+                                await _asyncio.sleep(wait)
+                                _retry = True
+                            else:
+                                raise _map_http_error(exc) from exc
+
+                        if not _retry:
+                            async for line in resp.aiter_lines():
+                                if not line.startswith("data:"):
+                                    continue
+                                data = line[5:].strip()
+                                if data == "[DONE]":
+                                    return
+                                try:
+                                    chunk = json.loads(data)
+                                    delta = chunk["choices"][0]["delta"].get("content") or ""
+                                    if delta:
+                                        yield delta
+                                except (KeyError, json.JSONDecodeError):
+                                    continue
+                            return  # success — exit retry loop
+            except httpx.TimeoutException as exc:
+                raise AppError("LLM_TIMEOUT", "LLM request timed out.", 502) from exc
+            except AppError:
+                raise
+            if not _retry:
+                return
+        # Exhausted both attempts — second was also 429
+        raise AppError("LLM_RATE_LIMIT", "LLM rate limit hit after retry.", 502)
 
     async def complete(
         self,

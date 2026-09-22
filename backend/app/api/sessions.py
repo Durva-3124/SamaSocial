@@ -1,8 +1,9 @@
 """Session and source management routes."""
 import logging
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Response, UploadFile
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel
 
 from app.core.config import get_settings
 from app.core.errors import AppError
@@ -11,6 +12,22 @@ from app.services.stores.session_store import get_session_store
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
+
+_MAX_SOURCES = 8
+_YOUTUBE_HOSTS = {
+    "youtube.com", "www.youtube.com",
+    "m.youtube.com", "music.youtube.com",
+    "youtu.be",
+}
+
+
+def _is_youtube(url: str) -> bool:
+    """Return True only when the URL's hostname is an exact YouTube domain."""
+    try:
+        host = urlparse(url).hostname or ""
+        return host.lower() in _YOUTUBE_HOSTS
+    except Exception:
+        return False
 
 
 # ── Sessions ──────────────────────────────────────────────────────────────────
@@ -31,7 +48,7 @@ async def upload_file(sid: str, file: UploadFile) -> dict:
     filename = file.filename or "upload"
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if ext not in ("pdf", "pptx"):
-        raise AppError("UNSUPPORTED_TYPE", "Only .pdf and .pptx files are supported.", 422)
+        raise AppError("UNSUPPORTED_FILE", "Only .pdf and .pptx files are supported.", 415)
 
     data = await file.read()
     max_bytes = settings.MAX_UPLOAD_MB * 1024 * 1024
@@ -41,6 +58,15 @@ async def upload_file(sid: str, file: UploadFile) -> dict:
             f"File exceeds the {settings.MAX_UPLOAD_MB} MB limit.",
             413,
         )
+
+    session = get_session_store().get(sid)
+    if len(session.sources) >= _MAX_SOURCES:
+        raise AppError("TOO_MANY_SOURCES", f"Sessions are limited to {_MAX_SOURCES} sources.", 400)
+
+    # Duplicate detection: same filename + same size
+    for src in session.sources.values():
+        if src.name == filename and src.chunk_count == 0 and src.status == "processing":
+            raise AppError("DUPLICATE_SOURCE", "This file is already being processed.", 409)
 
     source_id = await ingest_file(sid, filename, data)
     return {"source_id": source_id, "status": "processing"}
@@ -53,6 +79,15 @@ class UrlBody(BaseModel):
 @router.post("/sessions/{sid}/sources/url", status_code=202)
 async def add_url(sid: str, body: UrlBody) -> dict:
     """Ingest a YouTube video or webpage URL into the session."""
+    session = get_session_store().get(sid)
+    if len(session.sources) >= _MAX_SOURCES:
+        raise AppError("TOO_MANY_SOURCES", f"Sessions are limited to {_MAX_SOURCES} sources.", 400)
+
+    # Duplicate detection: same URL already present
+    for src in session.sources.values():
+        if src.name == body.url:
+            raise AppError("DUPLICATE_SOURCE", "This URL has already been added.", 409)
+
     source_id = await ingest_url(sid, body.url)
     return {"source_id": source_id, "status": "processing"}
 

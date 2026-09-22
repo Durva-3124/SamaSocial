@@ -138,29 +138,113 @@ async def test_stream_chat_401_raises_llm_auth() -> None:
 
 @pytest.mark.asyncio
 async def test_stream_chat_429_raises_rate_limit() -> None:
+    """Two consecutive 429s with short Retry-After must raise LLM_RATE_LIMIT."""
     _setup_env()
     from httpx import HTTPStatusError, Request, Response as HResp
-    resp = MagicMock()
-    resp.status_code = 429
-    resp.headers = {"retry-after": "5"}
-    resp.raise_for_status = MagicMock(
-        side_effect=HTTPStatusError("429", request=Request("POST", BASE), response=HResp(429, headers={"retry-after": "5"}))
-    )
-    stream_cm = AsyncMock()
-    stream_cm.__aenter__ = AsyncMock(return_value=resp)
-    stream_cm.__aexit__ = AsyncMock(return_value=False)
 
+    def _make_429_cm():
+        resp = MagicMock()
+        resp.status_code = 429
+        resp.headers = {"retry-after": "2"}
+        resp.raise_for_status = MagicMock(
+            side_effect=HTTPStatusError(
+                "429", request=Request("POST", BASE),
+                response=HResp(429, headers={"retry-after": "2"}),
+            )
+        )
+        cm = AsyncMock()
+        cm.__aenter__ = AsyncMock(return_value=resp)
+        cm.__aexit__ = AsyncMock(return_value=False)
+        return cm
+
+    # stream() is called twice (initial + retry); both return 429
     mock_client = AsyncMock()
-    mock_client.stream = MagicMock(return_value=stream_cm)
+    mock_client.stream = MagicMock(side_effect=[_make_429_cm(), _make_429_cm()])
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=False)
 
     with patch("app.services.llm.httpx.AsyncClient", return_value=mock_client):
-        with pytest.raises(AppError) as exc_info:
-            async for _ in OpenAICompatClient().stream_chat([Message(role="user", content="hi")]):
-                pass
+        with patch("app.services.llm._asyncio.sleep", new_callable=AsyncMock):
+            with pytest.raises(AppError) as exc_info:
+                async for _ in OpenAICompatClient().stream_chat(
+                    [Message(role="user", content="hi")]
+                ):
+                    pass
     assert exc_info.value.code == "LLM_RATE_LIMIT"
-    assert "5" in exc_info.value.message
+
+
+@pytest.mark.asyncio
+async def test_stream_chat_429_retry_succeeds() -> None:
+    """First attempt 429 (Retry-After=2), second attempt succeeds."""
+    _setup_env()
+    from httpx import HTTPStatusError, Request, Response as HResp
+
+    def _make_429_cm():
+        resp = MagicMock()
+        resp.status_code = 429
+        resp.headers = {"retry-after": "2"}
+        resp.raise_for_status = MagicMock(
+            side_effect=HTTPStatusError(
+                "429", request=Request("POST", BASE),
+                response=HResp(429, headers={"retry-after": "2"}),
+            )
+        )
+        cm = AsyncMock()
+        cm.__aenter__ = AsyncMock(return_value=resp)
+        cm.__aexit__ = AsyncMock(return_value=False)
+        return cm
+
+    success_cm = _mock_stream_response(200, _sse_lines("hello"))
+
+    mock_client = AsyncMock()
+    mock_client.stream = MagicMock(side_effect=[_make_429_cm(), success_cm])
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("app.services.llm.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.services.llm._asyncio.sleep", new_callable=AsyncMock):
+            tokens: list[str] = []
+            async for tok in OpenAICompatClient().stream_chat(
+                [Message(role="user", content="hi")]
+            ):
+                tokens.append(tok)
+    assert "".join(tokens) == "hello"
+
+
+@pytest.mark.asyncio
+async def test_stream_chat_429_long_retry_after_raises_immediately() -> None:
+    """Retry-After > 10 s must raise immediately without sleeping."""
+    _setup_env()
+    from httpx import HTTPStatusError, Request, Response as HResp
+
+    resp = MagicMock()
+    resp.status_code = 429
+    resp.headers = {"retry-after": "60"}
+    resp.raise_for_status = MagicMock(
+        side_effect=HTTPStatusError(
+            "429", request=Request("POST", BASE),
+            response=HResp(429, headers={"retry-after": "60"}),
+        )
+    )
+    cm = AsyncMock()
+    cm.__aenter__ = AsyncMock(return_value=resp)
+    cm.__aexit__ = AsyncMock(return_value=False)
+
+    mock_client = AsyncMock()
+    mock_client.stream = MagicMock(return_value=cm)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    sleep_mock = AsyncMock()
+    with patch("app.services.llm.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.services.llm._asyncio.sleep", sleep_mock):
+            with pytest.raises(AppError) as exc_info:
+                async for _ in OpenAICompatClient().stream_chat(
+                    [Message(role="user", content="hi")]
+                ):
+                    pass
+    assert exc_info.value.code == "LLM_RATE_LIMIT"
+    sleep_mock.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

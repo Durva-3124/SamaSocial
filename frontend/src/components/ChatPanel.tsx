@@ -9,9 +9,10 @@ interface Props {
   error: string | null;
   disabled: boolean;
   onSend: (text: string, mode: "normal" | "simple") => void;
+  onStop: () => void;
 }
 
-export default function ChatPanel({ messages, streaming, error, disabled, onSend }: Props) {
+export default function ChatPanel({ messages, streaming, error, disabled, onSend, onStop }: Props) {
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<"normal" | "simple">("normal");
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -30,12 +31,12 @@ export default function ChatPanel({ messages, streaming, error, disabled, onSend
 
   return (
     <section className="chat-panel">
-      <div className="chat-messages">
+      <div className="chat-messages" aria-live="polite" aria-label="Chat messages">
         {messages.length === 0 && (
           <p className="chat-empty">Ask a question about your sources.</p>
         )}
-        {messages.map((msg, i) => (
-          <div key={i} className={`chat-bubble chat-bubble--${msg.role}`}>
+        {messages.map((msg) => (
+          <div key={msg.id} className={`chat-bubble chat-bubble--${msg.role}`}>
             <ReactMarkdown>{msg.content || (msg.role === "assistant" && streaming ? "▌" : "")}</ReactMarkdown>
             {msg.citations && msg.citations.length > 0 && (
               <ul className="citations">
@@ -79,13 +80,19 @@ export default function ChatPanel({ messages, streaming, error, disabled, onSend
           onChange={(e) => setInput(e.target.value)}
           disabled={disabled || streaming}
         />
-        <button
-          className="btn btn--primary"
-          type="submit"
-          disabled={disabled || streaming || !input.trim()}
-        >
-          {streaming ? "…" : "Send"}
-        </button>
+        {streaming ? (
+          <button className="btn btn--secondary" type="button" onClick={onStop}>
+            Stop
+          </button>
+        ) : (
+          <button
+            className="btn btn--primary"
+            type="submit"
+            disabled={disabled || !input.trim()}
+          >
+            Send
+          </button>
+        )}
       </form>
     </section>
   );

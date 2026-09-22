@@ -4,12 +4,15 @@ import {
   getCourse,
   openCourseStream,
   patchPlan,
+  refreshResources as apiRefreshResources,
   uploadSyllabus,
   type Course,
   type IntakeData,
 } from "../api/courses";
+import { SseParser } from "../lib/sse";
 
 export interface CourseMessage {
+  id: string;
   role: "user" | "assistant";
   content: string;
 }
@@ -25,8 +28,15 @@ export interface UseCourseReturn {
   refreshing: boolean;
   error: string | null;
   sendMessage: (text: string) => Promise<void>;
+  stop: () => void;
   patch: (path: string, value: unknown) => Promise<void>;
   uploadSyllabusFile: (file: File, replace: boolean) => Promise<void>;
+  refreshResources: (lessonId: string | null) => Promise<boolean>;
+}
+
+let _msgCounter = 0;
+function nextId() {
+  return `cmsg-${++_msgCounter}`;
 }
 
 export function useCourse(): UseCourseReturn {
@@ -40,6 +50,16 @@ export function useCourse(): UseCourseReturn {
   const [refreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cidRef = useRef<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const planVersionRef = useRef(0);
+
+  const stop = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setStreaming(false);
+  }, []);
+
+  useEffect(() => () => { abortRef.current?.abort(); }, []);
 
   useEffect(() => {
     createCourse()
@@ -52,6 +72,7 @@ export function useCourse(): UseCourseReturn {
         setIntake(state.intake);
         setMissing(state.missing);
         setPlan(state.plan);
+        planVersionRef.current = state.plan_version;
         setPlanVersion(state.plan_version);
       })
       .catch((e: Error) => setError(e.message));
@@ -60,68 +81,72 @@ export function useCourse(): UseCourseReturn {
   const sendMessage = useCallback(async (text: string) => {
     const cid = cidRef.current;
     if (!cid) return;
-    setError(null);
-    setMessages((prev) => [...prev, { role: "user", content: text }]);
 
-    const assistantIdx = messages.length + 1;
-    setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+
+    setError(null);
+
+    const userId = nextId();
+    const assistantId = nextId();
+    setMessages((prev) => [
+      ...prev,
+      { id: userId, role: "user", content: text },
+      { id: assistantId, role: "assistant", content: "" },
+    ]);
     setStreaming(true);
 
-    const decoder = new TextDecoder();
-    let buffer = "";
+    const parser = new SseParser();
     let fullContent = "";
 
     try {
-      const reader = openCourseStream(cid, text);
+      const reader = openCourseStream(cid, text, ctrl.signal);
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-
-        const blocks = buffer.split("\n\n");
-        buffer = blocks.pop() ?? "";
-
-        for (const block of blocks) {
-          const eventLine = block.split("\n").find((l) => l.startsWith("event: "));
-          const dataLine = block.split("\n").find((l) => l.startsWith("data: "));
-          if (!eventLine || !dataLine) continue;
-
-          const event = eventLine.slice(7).trim();
-          const data = JSON.parse(dataLine.slice(6)) as Record<string, unknown>;
-
+        for (const { event, data } of parser.push(value)) {
           if (event === "token") {
             fullContent += data.text as string;
-            setMessages((prev) => {
-              const next = [...prev];
-              next[assistantIdx] = { ...next[assistantIdx], content: fullContent };
-              return next;
-            });
+            const snapshot = fullContent;
+            setMessages((prev) =>
+              prev.map((m) => (m.id === assistantId ? { ...m, content: snapshot } : m)),
+            );
           } else if (event === "intake_state") {
             setIntake(data.intake as IntakeData);
             setMissing(data.missing as string[]);
           } else if (event === "plan_update") {
-            setPlan(data.plan as Course);
-            setPlanVersion(data.plan_version as number);
+            const v = data.plan_version as number;
+            if (v > planVersionRef.current) {
+              planVersionRef.current = v;
+              setPlan(data.plan as Course);
+              setPlanVersion(v);
+            }
           } else if (event === "error") {
             setError(data.message as string);
           }
         }
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Chat failed");
+      if ((e as Error)?.name !== "AbortError") {
+        setError(e instanceof Error ? e.message : "Chat failed");
+      }
     } finally {
+      if (abortRef.current === ctrl) abortRef.current = null;
       setStreaming(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages.length]);
+  }, []);
 
   const patch = useCallback(async (path: string, value: unknown) => {
     const cid = cidRef.current;
     if (!cid) return;
     try {
       const result = await patchPlan(cid, path, value);
-      setPlan(result.plan);
-      setPlanVersion(result.plan_version);
+      if (result.plan_version > planVersionRef.current) {
+        planVersionRef.current = result.plan_version;
+        setPlan(result.plan);
+        setPlanVersion(result.plan_version);
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Patch failed");
     }
@@ -132,47 +157,38 @@ export function useCourse(): UseCourseReturn {
     if (!cid) return;
     setError(null);
     setStreaming(true);
-    const decoder = new TextDecoder();
-    let buffer = "";
+    const parser = new SseParser();
     try {
       const reader = await uploadSyllabus(cid, file, replace);
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const blocks = buffer.split("\n\n");
-        buffer = blocks.pop() ?? "";
-        for (const block of blocks) {
-          const eventLine = block.split("\n").find((l) => l.startsWith("event: "));
-          const dataLine = block.split("\n").find((l) => l.startsWith("data: "));
-          if (!eventLine || !dataLine) continue;
-          const event = eventLine.slice(7).trim();
-          const data = JSON.parse(dataLine.slice(6)) as Record<string, unknown>;
+        for (const { event, data } of parser.push(value)) {
           if (event === "intake_state") {
             setIntake(data.intake as IntakeData);
             setMissing(data.missing as string[]);
           } else if (event === "plan_update") {
-            setPlan(data.plan as Course);
-            setPlanVersion(data.plan_version as number);
+            const v = data.plan_version as number;
+            if (v > planVersionRef.current) {
+              planVersionRef.current = v;
+              setPlan(data.plan as Course);
+              setPlanVersion(v);
+            }
           } else if (event === "token") {
-            // append to last assistant message or create one
             setMessages((prev) => {
               const last = prev[prev.length - 1];
               if (last?.role === "assistant") {
-                const next = [...prev];
-                next[next.length - 1] = { ...last, content: last.content + (data.text as string) };
-                return next;
+                return prev.map((m, i) =>
+                  i === prev.length - 1
+                    ? { ...m, content: m.content + (data.text as string) }
+                    : m,
+                );
               }
-              return [...prev, { role: "assistant", content: data.text as string }];
+              return [...prev, { id: nextId(), role: "assistant", content: data.text as string }];
             });
           } else if (event === "error") {
             const code = (data as Record<string, string>).code;
-            if (code === "PLAN_EXISTS") {
-              // bubble up so CoursePlanner can show confirm dialog
-              setError("PLAN_EXISTS");
-            } else {
-              setError(data.message as string);
-            }
+            setError(code === "PLAN_EXISTS" ? "PLAN_EXISTS" : (data.message as string));
           }
         }
       }
@@ -180,6 +196,32 @@ export function useCourse(): UseCourseReturn {
       setError(e instanceof Error ? e.message : "Syllabus upload failed");
     } finally {
       setStreaming(false);
+    }
+  }, []);
+
+  const refreshResources = useCallback(async (lessonId: string | null): Promise<boolean> => {
+    const cid = cidRef.current;
+    if (!cid) return false;
+    const parser = new SseParser();
+    try {
+      const reader = await apiRefreshResources(cid, lessonId);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        for (const { event, data } of parser.push(value)) {
+          if (event === "plan_update") {
+            const v = data.plan_version as number;
+            if (v > planVersionRef.current) {
+              planVersionRef.current = v;
+              setPlan(data.plan as Course);
+              setPlanVersion(v);
+            }
+          }
+        }
+      }
+      return true;
+    } catch {
+      return false;
     }
   }, []);
 
@@ -194,7 +236,9 @@ export function useCourse(): UseCourseReturn {
     refreshing,
     error,
     sendMessage,
+    stop,
     patch,
     uploadSyllabusFile,
+    refreshResources,
   };
 }

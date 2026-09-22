@@ -57,6 +57,7 @@ async def chat_stream(
     llm: LLMClient | None = None,
     embedder: Embedder | None = None,
     vector_store: VectorStore | None = None,
+    temperature: float = 0.2,
 ) -> AsyncIterator[str]:
     """Yield SSE strings: token*, citations, done  (or error on failure)."""
     _llm = llm or get_llm()
@@ -87,8 +88,7 @@ async def chat_stream(
 
     full_response = ""
     try:
-        stream = await _llm.stream_chat(messages, system=system)
-        async for token in stream:
+        async for token in _llm.stream_chat(messages, system=system, temperature=temperature):
             full_response += token
             yield _sse("token", {"text": token})
     except Exception as exc:
