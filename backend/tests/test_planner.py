@@ -24,18 +24,25 @@ def _minimal_course_json() -> str:
         "description": "Learn Python",
         "level": "beginner",
         "total_weeks": 2,
+        "goals": [],
         "modules": [
             {
                 "id": "m1", "title": "Intro",
+                "difficulty": "beginner",
+                "prerequisites": [],
                 "lessons": [{"id": "m1-l1", "title": "Hello", "duration_minutes": 30,
-                              "objectives": [], "resources": []}],
+                              "difficulty": "beginner", "objectives": [], "topics": [],
+                              "resources": []}],
             }
         ],
     })
 
 
 def _full_intake() -> IntakeData:
-    return IntakeData(topic="Python", level="beginner", duration_weeks=2)
+    return IntakeData(
+        topic="Python", level="beginner", duration_weeks=2,
+        sessions_per_week=3, age_group="adult", prior_knowledge="none"
+    )
 
 
 def _parse_sse(raw: str) -> list[dict]:

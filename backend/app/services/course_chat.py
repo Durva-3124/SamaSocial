@@ -1,10 +1,10 @@
 """Course planner chat pipeline — SSE stream."""
 from __future__ import annotations
 
-import json
 import logging
 from collections.abc import AsyncIterator
 
+from app.core.sse import sse as _sse
 from app.models.course import Course, missing_intake_fields
 from app.models.llm import Message
 from app.services.intake import analyse_turn, intake_prompt
@@ -13,10 +13,6 @@ from app.services.planner import generate_plan, refine_plan
 from app.services.stores.course_store import CourseRecord
 
 logger = logging.getLogger(__name__)
-
-
-def _sse(event: str, data: dict) -> str:
-    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
 def _merge_modules(current: Course, generated: Course) -> Course:

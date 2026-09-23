@@ -21,16 +21,21 @@ from tests.fakes import FakeLLM
 
 def test_missing_intake_all_missing():
     intake = IntakeData()
-    assert set(missing_intake_fields(intake)) == {"topic", "level", "duration_weeks"}
+    assert set(missing_intake_fields(intake)) == {
+        "topic", "level", "duration_weeks", "sessions_per_week", "age_group", "prior_knowledge"
+    }
 
 
 def test_missing_intake_partial():
     intake = IntakeData(topic="Python", level="beginner")
-    assert missing_intake_fields(intake) == ["duration_weeks"]
+    assert set(missing_intake_fields(intake)) == {"duration_weeks", "sessions_per_week", "age_group", "prior_knowledge"}
 
 
 def test_missing_intake_none_missing():
-    intake = IntakeData(topic="Python", level="beginner", duration_weeks=4)
+    intake = IntakeData(
+        topic="Python", level="beginner", duration_weeks=4,
+        sessions_per_week=3, age_group="adult", prior_knowledge="none"
+    )
     assert missing_intake_fields(intake) == []
 
 
@@ -82,7 +87,7 @@ def test_course_store_ttl_eviction():
 async def test_analyse_turn_extracts_topic():
     payload = json.dumps({"topic": "machine learning", "level": "beginner"})
     llm = FakeLLM(script=[payload])
-    intake = await analyse_turn("I want to learn ML", [], IntakeData(), llm=llm)
+    intake, _intent = await analyse_turn("I want to learn ML", [], IntakeData(), llm=llm)
     assert intake.topic == "machine learning"
     assert intake.level == "beginner"
 
@@ -92,7 +97,7 @@ async def test_analyse_turn_does_not_overwrite_existing():
     payload = json.dumps({"topic": "new topic"})
     llm = FakeLLM(script=[payload])
     existing = IntakeData(topic="Python")
-    intake = await analyse_turn("something", [], existing, llm=llm)
+    intake, _intent = await analyse_turn("something", [], existing, llm=llm)
     assert intake.topic == "Python"  # not overwritten
 
 
@@ -103,8 +108,61 @@ async def test_analyse_turn_returns_current_on_llm_failure():
             raise ValueError("boom")
 
     existing = IntakeData(topic="Python")
-    intake = await analyse_turn("hi", [], existing, llm=_BadLLM())
+    intake, _intent = await analyse_turn("hi", [], existing, llm=_BadLLM())
     assert intake.topic == "Python"
+
+
+@pytest.mark.asyncio
+async def test_analyse_turn_recovers_explicit_answers_when_llm_is_partial():
+    payload = json.dumps({"intent": "intake", "topic": "Python"})
+    llm = FakeLLM(script=[payload])
+    intake, _intent = await analyse_turn(
+        "topic: Python, level: beginner, duration: 4 weeks, 3 sessions per week, age: adult, prior knowledge: none",
+        [],
+        IntakeData(),
+        llm=llm,
+    )
+    assert missing_intake_fields(intake) == []
+
+
+@pytest.mark.asyncio
+async def test_analyse_turn_understands_total_sessions_age_and_yes_no():
+    llm = FakeLLM(script=[json.dumps({"intent": "intake"})])
+    intake = IntakeData(duration_weeks=4)
+    intake, _intent = await analyse_turn("12 sessions, age is 19 and yes", [], intake, llm=llm)
+    assert intake.sessions_per_week == 3
+    assert intake.age_group == "19-year-old learner"
+    assert intake.prior_knowledge == "yes"
+
+
+@pytest.mark.asyncio
+async def test_analyse_turn_parses_answers_when_llm_json_is_invalid():
+    class _BadLLM:
+        async def complete_json(self, *args, **kwargs):
+            raise ValueError("sessions_per_week must be 1-7")
+
+    intake, _intent = await analyse_turn(
+        "12 sessions, age is 19 and yes",
+        [],
+        IntakeData(duration_weeks=4),
+        llm=_BadLLM(),
+    )
+    assert intake.sessions_per_week == 3
+    assert intake.age_group == "19-year-old learner"
+    assert intake.prior_knowledge == "yes"
+
+
+@pytest.mark.asyncio
+async def test_analyse_turn_skips_llm_when_explicit_answers_complete_intake():
+    llm = FakeLLM(script=["not used"])
+    intake, _intent = await analyse_turn(
+        "topic: Python, beginner, 4 weeks, 3 sessions per week, age: 19, prior knowledge: none",
+        [],
+        IntakeData(),
+        llm=llm,
+    )
+    assert missing_intake_fields(intake) == []
+    assert llm.calls == []
 
 
 def test_intake_prompt_returns_string():
@@ -129,7 +187,7 @@ def test_get_course_initial_state():
     data = resp.json()
     assert data["plan"] is None
     assert data["plan_version"] == 0
-    assert set(data["missing"]) == {"topic", "level", "duration_weeks"}
+    assert set(data["missing"]) == {"topic", "level", "duration_weeks", "sessions_per_week", "age_group", "prior_knowledge"}
     assert data["messages"] == []
 
 

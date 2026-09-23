@@ -60,6 +60,56 @@ class FakeLLM:
         return schema.model_validate_json(raw)
 
 
+class FakeLLMWithRateLimit:
+    """Fake LLM that yields some tokens then raises a rate-limit error."""
+
+    def __init__(
+        self,
+        tokens_before_error: list[str],
+        error_code: str = "LLM_RATE_LIMIT",
+        error_message: str = "LLM rate limit hit. Retry after 5s.",
+    ) -> None:
+        self._tokens_before_error = tokens_before_error
+        self._idx = 0
+        self._error_code = error_code
+        self._error_message = error_message
+        self.calls: list[dict[str, Any]] = []
+
+    async def stream_chat(  # type: ignore[override]
+        self,
+        messages: list[Message],
+        system: str | None = None,
+        temperature: float = 0.2,
+    ) -> AsyncIterator[str]:
+        self.calls.append({"messages": messages, "system": system})
+        # Yield some tokens first
+        for token in self._tokens_before_error:
+            yield token
+        # Then raise rate limit error
+        from app.core.errors import AppError
+        raise AppError(self._error_code, self._error_message, 502)
+
+    async def complete(
+        self,
+        messages: list[Message],
+        system: str | None = None,
+        temperature: float = 0.0,
+    ) -> str:
+        self.calls.append({"messages": messages, "system": system})
+        return "".join(self._tokens_before_error)
+
+    async def complete_json(
+        self,
+        messages: list[Message],
+        system: str,
+        schema: type[BaseModel],
+        temperature: float = 0.0,
+    ) -> BaseModel:
+        self.calls.append({"messages": messages, "system": system})
+        raw = "".join(self._tokens_before_error)
+        return schema.model_validate_json(raw)
+
+
 class FakeEmbedder:
     """Deterministic bag-of-words embedder (dim=256). No model download."""
 

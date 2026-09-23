@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Course, Module, Lesson } from "../api/courses";
+import type { Course, Module, Lesson, DifficultyLevel } from "../api/courses";
 import "./PlanViewer.css";
 
 interface Props {
@@ -68,6 +68,19 @@ function EditableText({ value, onCommit, className, multiline }: EditableTextPro
   );
 }
 
+function DifficultyBadge({ level }: { level: DifficultyLevel }) {
+  return <span className={`pv-difficulty pv-difficulty--${level}`}>{level}</span>;
+}
+
+function PrerequisiteChips({ items }: { items: string[] }) {
+  if (!items.length) return null;
+  return (
+    <ul className="pv-prereqs">
+      {items.map((p) => <li key={p} className="pv-prereq-chip">{p}</li>)}
+    </ul>
+  );
+}
+
 function isHttpUrl(url: string): boolean {
   try {
     const { protocol } = new URL(url);
@@ -100,6 +113,7 @@ function LessonRow({ lesson, modIdx, lesIdx, onPatch, onRefresh }: LessonRowProp
           onCommit={(v) => onPatch(`${base}/title`, v)}
           className="pv-lesson-title"
         />
+        <DifficultyBadge level={lesson.difficulty} />
         <span className="pv-duration">{lesson.duration_minutes}m</span>
         <button
           className="btn btn--ghost pv-refresh-btn"
@@ -110,26 +124,35 @@ function LessonRow({ lesson, modIdx, lesIdx, onPatch, onRefresh }: LessonRowProp
         </button>
       </div>
 
-      {open && lesson.resources.length > 0 && (
-        <ul className="pv-resources">
-          {lesson.resources.map((r) => (
-            <li key={r.id} className="pv-resource">
-              <span className={`pv-resource-type pv-resource-type--${r.type}`}>{r.type}</span>
-              {isHttpUrl(r.url) ? (
-                <a
-                  href={r.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="pv-resource-link"
-                >
-                  {r.title}
-                </a>
-              ) : (
-                <span className="pv-resource-link">{r.title}</span>
-              )}
-            </li>
-          ))}
-        </ul>
+      {open && (
+        <>
+          {lesson.topics.length > 0 && (
+            <ul className="pv-topics">
+              {lesson.topics.map((t) => <li key={t} className="pv-topic">{t}</li>)}
+            </ul>
+          )}
+          {lesson.resources.length > 0 && (
+            <ul className="pv-resources">
+              {lesson.resources.map((r) => (
+                <li key={r.id} className="pv-resource">
+                  <span className={`pv-resource-type pv-resource-type--${r.type}`}>{r.type}</span>
+                  {isHttpUrl(r.url) ? (
+                    <a
+                      href={r.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="pv-resource-link"
+                    >
+                      {r.title}
+                    </a>
+                  ) : (
+                    <span className="pv-resource-link">{r.title}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
     </li>
   );
@@ -143,7 +166,7 @@ interface ModuleCardProps {
 }
 
 function ModuleCard({ mod, modIdx, onPatch, onRefresh }: ModuleCardProps) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
 
   return (
     <div className="pv-module">
@@ -156,20 +179,24 @@ function ModuleCard({ mod, modIdx, onPatch, onRefresh }: ModuleCardProps) {
           onCommit={(v) => onPatch(`/modules/${modIdx}/title`, v)}
           className="pv-module-title"
         />
+        <DifficultyBadge level={mod.difficulty} />
       </div>
       {open && (
-        <ul className="pv-lessons">
-          {mod.lessons.map((les, li) => (
-            <LessonRow
-              key={les.id}
-              lesson={les}
-              modIdx={modIdx}
-              lesIdx={li}
-              onPatch={onPatch}
-              onRefresh={onRefresh}
-            />
-          ))}
-        </ul>
+        <>
+          <PrerequisiteChips items={mod.prerequisites} />
+          <ul className="pv-lessons">
+            {mod.lessons.map((les, li) => (
+              <LessonRow
+                key={les.id}
+                lesson={les}
+                modIdx={modIdx}
+                lesIdx={li}
+                onPatch={onPatch}
+                onRefresh={onRefresh}
+              />
+            ))}
+          </ul>
+        </>
       )}
     </div>
   );

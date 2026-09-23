@@ -123,7 +123,15 @@ export function useCourse(): UseCourseReturn {
               setPlanVersion(v);
             }
           } else if (event === "error") {
-            setError(data.message as string);
+            const message = data.message as string;
+            setError(message);
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? { ...m, content: `I couldn't finish the course plan: ${message}` }
+                  : m,
+              ),
+            );
           }
         }
       }

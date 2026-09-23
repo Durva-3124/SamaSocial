@@ -272,7 +272,7 @@
   {
     "id": "f25",
     "source": "web",
-    "locator": "Introduction",
+    "locator": "section \"Introduction\"",
     "text": "Machine learning is a subset of artificial intelligence that enables systems to learn from data.",
     "keywords": [
       "machine learning",
@@ -283,7 +283,7 @@
   {
     "id": "f26",
     "source": "web",
-    "locator": "Supervised Learning",
+    "locator": "section \"Supervised Learning\"",
     "text": "Supervised learning uses labelled training data to learn a mapping from inputs to outputs.",
     "keywords": [
       "supervised",
@@ -295,7 +295,7 @@
   {
     "id": "f27",
     "source": "web",
-    "locator": "Unsupervised Learning",
+    "locator": "section \"Unsupervised Learning\"",
     "text": "Unsupervised learning finds hidden patterns in unlabelled data, such as clustering and dimensionality reduction.",
     "keywords": [
       "unsupervised",
@@ -306,7 +306,7 @@
   {
     "id": "f28",
     "source": "web",
-    "locator": "Overfitting",
+    "locator": "section \"Overfitting\"",
     "text": "Overfitting occurs when a model learns noise in the training data and performs poorly on new data.",
     "keywords": [
       "overfitting",
@@ -317,7 +317,7 @@
   {
     "id": "f29",
     "source": "web",
-    "locator": "Regularisation",
+    "locator": "section \"Regularisation\"",
     "text": "Regularisation techniques like L1 (Lasso) and L2 (Ridge) penalise large weights to reduce overfitting.",
     "keywords": [
       "regularisation",
@@ -330,7 +330,7 @@
   {
     "id": "f30",
     "source": "web",
-    "locator": "Cross-Validation",
+    "locator": "section \"Cross-Validation\"",
     "text": "K-fold cross-validation splits data into K subsets and trains K models, each tested on a different fold.",
     "keywords": [
       "K-fold",
@@ -341,7 +341,7 @@
   {
     "id": "f31",
     "source": "web",
-    "locator": "Neural Networks",
+    "locator": "section \"Neural Networks\"",
     "text": "A neural network consists of layers of interconnected nodes (neurons) that transform inputs via activation functions.",
     "keywords": [
       "neural network",
@@ -352,7 +352,7 @@
   {
     "id": "f32",
     "source": "web",
-    "locator": "Gradient Descent",
+    "locator": "section \"Gradient Descent\"",
     "text": "Gradient descent minimises the loss function by iteratively adjusting weights in the direction of the negative gradient.",
     "keywords": [
       "gradient descent",

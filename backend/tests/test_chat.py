@@ -1,18 +1,20 @@
 """Tests for chat pipeline and SSE route — no network, no real LLM."""
 import json
+import logging
 from unittest.mock import patch
 
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
+from app.core.errors import AppError
 from app.main import app
 from app.models.chunk import Chunk, Locator
 from app.models.session import Session, SourceRecord
 from app.services.chat import chat_stream
 from app.services.stores.session_store import SessionStore
 from app.services.stores.vector_store import VectorStore
-from tests.fakes import FakeEmbedder, FakeLLM
+from tests.fakes import FakeEmbedder, FakeLLM, FakeLLMWithRateLimit
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -155,3 +157,46 @@ def test_chat_route_unknown_session():
     client = TestClient(app)
     resp = client.post("/api/sessions/ghost/chat", json={"message": "hi"})
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_logs_warning_when_citations_missing_above_threshold(session_with_chunk, caplog):
+    session, vs = session_with_chunk
+    # FakeLLM provides an answer with zero [S#] tags despite retrieved chunks
+    llm = FakeLLM(script=["Photosynthesis converts light into chemical energy without citations."])
+    emb = FakeEmbedder()
+
+    with caplog.at_level(logging.WARNING):
+        async for _ in chat_stream(session, "python loops", "normal", llm=llm, embedder=emb, vector_store=vs):
+            pass
+
+    assert any("citation_omission" in record.message for record in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_emits_error_event_on_midstream_rate_limit(session_with_chunk):
+    """When LLM raises LLM_RATE_LIMIT mid-stream, chat_stream should emit an error event with the right code."""
+    session, vs = session_with_chunk
+    # Simulate: yield "Partial " then hit rate limit
+    llm = FakeLLMWithRateLimit(tokens_before_error=["Partial ", "answer "])
+    emb = FakeEmbedder()
+
+    events = []
+    async for chunk in chat_stream(session, "python loops", "normal", llm=llm, embedder=emb, vector_store=vs):
+        events.append(chunk)
+
+    raw = "".join(events)
+    parsed = _parse_sse(raw)
+    event_names = [e["event"] for e in parsed]
+
+    # Should have token events for the partial response, then an error event
+    assert "token" in event_names
+    assert "error" in event_names
+    # Should NOT have done event (stream was cut off)
+    assert "done" not in event_names
+
+    error_event = next(e for e in parsed if e["event"] == "error")
+    assert error_event["data"]["code"] == "LLM_RATE_LIMIT"
+    assert "rate-limited" in error_event["data"]["message"].lower()
+    assert "try again" in error_event["data"]["message"].lower()
+

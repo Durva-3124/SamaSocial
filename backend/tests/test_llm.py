@@ -283,6 +283,34 @@ async def test_complete_json_success() -> None:
 
 
 @pytest.mark.asyncio
+async def test_complete_retries_short_rate_limit() -> None:
+    _setup_env()
+    from httpx import HTTPStatusError, Request, Response as HResp
+
+    first = _mock_post_response(429, {})
+    first.headers = {"retry-after": "2"}
+    first.raise_for_status = MagicMock(
+        side_effect=HTTPStatusError(
+            "429", request=Request("POST", BASE),
+            response=HResp(429, headers={"retry-after": "2"}),
+        )
+    )
+    second = _mock_post_response(200, _completion_json("ok"))
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(side_effect=[first, second])
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("app.services.llm.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.services.llm._asyncio.sleep", new_callable=AsyncMock):
+            result = await OpenAICompatClient().complete(
+                [Message(role="user", content="q")]
+            )
+    assert result == "ok"
+    assert mock_client.post.call_count == 2
+
+
+@pytest.mark.asyncio
 async def test_complete_json_retry_then_success() -> None:
     _setup_env()
     mc = _patch_complete([

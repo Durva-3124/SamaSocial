@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import uuid
+from urllib.parse import urlparse
 
 from app.models.session import Session, SourceRecord
 from app.services.embeddings import Embedder, get_embedder
@@ -10,6 +11,21 @@ from app.services.stores.session_store import SessionStore, get_session_store
 from app.services.stores.vector_store import VectorStore, get_vector_store
 
 logger = logging.getLogger(__name__)
+
+_YOUTUBE_HOSTS = {
+    "youtube.com", "www.youtube.com",
+    "m.youtube.com", "music.youtube.com",
+    "youtu.be",
+}
+
+
+def is_youtube_url(url: str) -> bool:
+    """Return True only when the URL hostname is an exact YouTube domain."""
+    try:
+        host = urlparse(url).hostname or ""
+        return host.lower() in _YOUTUBE_HOSTS
+    except Exception:
+        return False
 
 
 async def _embed_and_store(
@@ -113,7 +129,7 @@ async def ingest_url(
     session = ss.get(session_id)
     source_id = uuid.uuid4().hex
 
-    is_youtube = "youtube.com" in url or "youtu.be" in url
+    is_youtube = is_youtube_url(url)
     source_type = "youtube" if is_youtube else "web"
 
     record = SourceRecord(id=source_id, type=source_type, name=url)

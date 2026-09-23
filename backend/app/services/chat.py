@@ -1,30 +1,24 @@
-"""RAG chat pipeline: retrieve → prompt → stream → citations."""
-import json
 import logging
+import re
 from collections.abc import AsyncIterator
 
+from app.core.config import get_settings
+from app.core.errors import AppError
+from app.core.sse import sse as _sse
 from app.models.chunk import Chunk
 from app.models.llm import Message
 from app.models.session import Session
 from app.services.embeddings import Embedder, get_embedder
 from app.services.llm import LLMClient, get_llm
+from app.services.prompts import CITATION_RULE, GROUNDED_SYSTEM, SIMPLE_SYSTEM
 from app.services.retrieval import Retriever
 from app.services.stores.vector_store import VectorStore, get_vector_store
 
 logger = logging.getLogger(__name__)
 
-_SYSTEM_NORMAL = (
-    "You are a helpful learning assistant. Answer the user's question using ONLY "
-    "the provided context chunks. Cite sources inline as [S1], [S2], etc., matching "
-    "the chunk labels given. If the context does not contain enough information to "
-    "answer, say so clearly and set declined=true in the done event."
-)
-
-_SYSTEM_SIMPLE = (
-    "You are a helpful learning assistant. Explain the answer simply, as if to a "
-    "beginner. Use ONLY the provided context chunks. Cite sources as [S1], [S2], etc. "
-    "If the context is insufficient, say so."
-)
+_CITATION_RULE = CITATION_RULE
+_SYSTEM_NORMAL = GROUNDED_SYSTEM
+_SYSTEM_SIMPLE = SIMPLE_SYSTEM
 
 
 def _build_context_block(chunks_with_scores: list[tuple[Chunk, float]]) -> tuple[str, list[dict]]:
@@ -43,10 +37,6 @@ def _build_context_block(chunks_with_scores: list[tuple[Chunk, float]]) -> tuple
             "score": score,
         })
     return "\n\n".join(lines), citations
-
-
-def _sse(event: str, data: dict) -> str:
-    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
 async def chat_stream(
@@ -91,6 +81,14 @@ async def chat_stream(
         async for token in _llm.stream_chat(messages, system=system, temperature=temperature):
             full_response += token
             yield _sse("token", {"text": token})
+    except AppError as exc:
+        if exc.code == "LLM_RATE_LIMIT":
+            logger.warning("LLM rate limit hit during streaming: %s", exc.message)
+            yield _sse("error", {"code": "LLM_RATE_LIMIT", "message": "The assistant is temporarily rate-limited, please try again in a moment"})
+        else:
+            logger.exception("LLM streaming failed: %s", exc.message)
+            yield _sse("error", {"code": exc.code, "message": exc.message})
+        return
     except Exception as exc:
         logger.exception("LLM streaming failed")
         yield _sse("error", {"code": "LLM_ERROR", "message": str(exc)})
@@ -111,6 +109,28 @@ async def chat_stream(
         src = session.sources.get(item["source_id"])
         item["source_name"] = src.name if src else item["source_id"]
         item["source_type"] = src.type if src else "web"
+
+    # Safety net: log structured warning if no [S#] tags found despite retrieved context above threshold
+    tags_found = re.findall(r"\[S\d+\]", full_response)
+    if not tags_found and citation_meta:
+        top_score = max(c["score"] for c in citation_meta)
+        threshold = get_settings().RETRIEVAL_MIN_SCORE
+        if top_score >= threshold:
+            logger.warning(
+                "citation_omission session=%s top_score=%.4f chunks=%d "
+                "response_len=%d — model returned no [S#] tags despite grounded context",
+                session.id,
+                top_score,
+                len(citation_meta),
+                len(full_response),
+                extra={
+                    "event": "citation_omission",
+                    "session_id": session.id,
+                    "top_score": top_score,
+                    "chunks": len(citation_meta),
+                    "response_len": len(full_response),
+                },
+            )
 
     if visible:
         yield _sse("citations", {"items": visible})

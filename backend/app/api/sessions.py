@@ -1,33 +1,23 @@
 """Session and source management routes."""
 import logging
-from urllib.parse import urlparse
 
 from fastapi import APIRouter, Response, UploadFile
 from pydantic import BaseModel
 
 from app.core.config import get_settings
 from app.core.errors import AppError
-from app.services.ingest_manager import ingest_file, ingest_url, remove_source
+from app.services.ingest_manager import ingest_file, ingest_url, is_youtube_url, remove_source
 from app.services.stores.session_store import get_session_store
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
 
 _MAX_SOURCES = 8
-_YOUTUBE_HOSTS = {
-    "youtube.com", "www.youtube.com",
-    "m.youtube.com", "music.youtube.com",
-    "youtu.be",
-}
 
 
 def _is_youtube(url: str) -> bool:
-    """Return True only when the URL's hostname is an exact YouTube domain."""
-    try:
-        host = urlparse(url).hostname or ""
-        return host.lower() in _YOUTUBE_HOSTS
-    except Exception:
-        return False
+    """Thin alias kept for any future internal use; delegates to ingest_manager."""
+    return is_youtube_url(url)
 
 
 # ── Sessions ──────────────────────────────────────────────────────────────────

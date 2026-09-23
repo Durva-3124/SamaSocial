@@ -29,6 +29,7 @@ class Settings(BaseSettings):
 
     # Optional third-party keys
     YOUTUBE_API_KEY: Optional[str] = None
+    YOUTUBE_PROXY: Optional[str] = None
     TAVILY_API_KEY: Optional[str] = None
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")

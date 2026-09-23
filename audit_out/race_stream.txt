@@ -1,0 +1,93 @@
+event: intake_state
+data: {"intake": {"topic": "Python programming", "level": "beginner", "duration_weeks": 4, "sessions_per_week": 3, "age_group": "adult", "prior_knowledge": "no prior knowledge", "goals": ["build small scripts"], "prerequisites": [], "extra": {}}, "missing": []}
+
+event: plan_update
+data: {"plan": {"title": "Introduction to Python Programming", "description": "A beginner-friendly 4\u2011week course that teaches adults with no prior programming experience how to write small Python scripts.", "level": "beginner", "total_weeks": 4, "goals": ["Write basic Python scripts", "Understand fundamental programming concepts", "Use variables, control flow, and functions"], "audience": {"age_group": "adult", "level": "beginner", "prior_knowledge": "none"}, "duration": {"weeks": 4, "sessions_per_week": 3, "session_minutes": 60}, "modules": [{"id": "m1", "title": "Getting Started with Python", "difficulty": "beginner", "prerequisites": [], "lessons": [{"id": "m1-l1", "title": "Installing Python and Setting Up the Environment", "duration_minutes": 60, "difficulty": "beginner", "objectives": ["Install Python on the computer", "Configure an IDE or text editor for Python development"], "topics": ["Python installation", "IDE setup"], "resources": []}, {"id": "m1-l2", "title": "Hello World and Basic Syntax", "duration_minutes": 60, "difficulty": "beginner", "objectives": ["Write and run the first Python program", "Understand basic syntax rules and comments"], "topics": ["print function", "comments", "basic syntax"], "resources": []}, {"id": "m1-l3", "title": "Variables and Data Types", "duration_minutes": 60, "difficulty": "beginner", "objectives": ["Declare variables", "Use common data types such as strings, integers, floats, and booleans"], "topics": ["variables", "strings", "integers", "floats", "booleans"], "resources": []}]}, {"id": "m2", "title": "Working with Input and Output", "difficulty": "beginner", "prerequisites": ["variables and data types"], "lessons": [{"id": "m2-l1", "title": "User Input and Type Conversion", "duration_minutes": 60, "difficulty": "beginner", "objectives": ["Read input from the user", "Convert string input to numeric types"], "topics": ["input() function", "type casting"], "resources": []}, {"id": "m2-l2", "title": "Basic Arithmetic Operations", "duration_minutes": 60, "difficulty": "beginner", "objectives": ["Perform addition, subtraction, multiplication, and division", "Understand operator precedence"], "topics": ["arithmetic operators", "expressions", "operator precedence"], "resources": []}, {"id": "m2-l3", "title": "String Manipulation", "duration_minutes": 60, "difficulty": "beginner", "objectives": ["Concatenate strings", "Format output using f\u2011strings"], "topics": ["string concatenation", "formatting", "f\u2011strings"], "resources": []}]}, {"id": "m3", "title": "Control Flow", "difficulty": "beginner", "prerequisites": ["user input and basic arithmetic"], "lessons": [{"id": "m3-l1", "title": "Conditional Statements", "duration_minutes": 60, "difficulty": "beginner", "objectives": ["Make decisions using if, elif, and else"], "topics": ["if statement", "elif clause", "else clause"], "resources": []}, {"id": "m3-l2", "title": "Loops: while", "duration_minutes": 60, "difficulty": "beginner", "objectives": ["Repeat actions while a condition is true", "Control loop execution with break and continue"], "topics": ["while loops", "break statement", "continue statement"], "resources": []}, {"id": "m3-l3", "title": "Loops: for", "duration_minutes": 60, "difficulty": "beginner", "objectives": ["Iterate over ranges and collections", "Use the range() function"], "topics": ["for loops", "range() function", "iterating over lists"], "resources": []}]}, {"id": "m4", "title": "Functions and Modules", "difficulty": "beginner", "prerequisites": ["control flow"], "lessons": [{"id": "m4-l1", "title": "Defining and Calling Functions", "duration_minutes": 60, "difficulty": "beginner", "objectives": ["Create reusable functions", "Pass arguments and return values"], "topics": ["def keyword", "parameters", "return statement"], "resources": []}, {"id": "m4-l2", "title": "Scope and Arguments", "duration_minutes": 60, "difficulty": "beginner", "objectives": ["Understand local vs. global variables", "Use default and keyword arguments"], "topics": ["variable scope", "default arguments", "keyword arguments"], "resources": []}, {"id": "m4-l3", "title": "Using Standard Library Modules", "duration_minutes": 60, "difficulty": "beginner", "objectives": ["Import and use built\u2011in modules", "Explore common modules such as math and random"], "topics": ["import statement", "math module", "random module"], "resources": []}]}]}, "plan_version": 1, "changed_ids": ["m1", "m2", "m3", "m4"]}
+
+event: token
+data: {"text": "I've "}
+
+event: token
+data: {"text": "generated "}
+
+event: token
+data: {"text": "your "}
+
+event: token
+data: {"text": "course "}
+
+event: token
+data: {"text": "plan: "}
+
+event: token
+data: {"text": "**Introduction "}
+
+event: token
+data: {"text": "to "}
+
+event: token
+data: {"text": "Python "}
+
+event: token
+data: {"text": "Programming** "}
+
+event: token
+data: {"text": "\u2014 "}
+
+event: token
+data: {"text": "A "}
+
+event: token
+data: {"text": "beginner-friendly "}
+
+event: token
+data: {"text": "4\u2011week "}
+
+event: token
+data: {"text": "course "}
+
+event: token
+data: {"text": "that "}
+
+event: token
+data: {"text": "teaches "}
+
+event: token
+data: {"text": "adults "}
+
+event: token
+data: {"text": "with "}
+
+event: token
+data: {"text": "no "}
+
+event: token
+data: {"text": "prior "}
+
+event: token
+data: {"text": "programming "}
+
+event: token
+data: {"text": "experience "}
+
+event: token
+data: {"text": "how "}
+
+event: token
+data: {"text": "to "}
+
+event: token
+data: {"text": "write "}
+
+event: token
+data: {"text": "small "}
+
+event: token
+data: {"text": "Python "}
+
+event: token
+data: {"text": "scripts. "}
+
+event: done
+data: {}
+

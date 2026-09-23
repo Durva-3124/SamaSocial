@@ -65,8 +65,8 @@ def test_upload_unsupported_type():
         f"/api/sessions/{sid}/sources/file",
         files={"file": ("notes.txt", b"hello", "text/plain")},
     )
-    assert resp.status_code == 422
-    assert resp.json()["error"]["code"] == "UNSUPPORTED_TYPE"
+    assert resp.status_code == 415
+    assert resp.json()["error"]["code"] == "UNSUPPORTED_FILE"
 
 
 def test_upload_file_too_large(monkeypatch):
@@ -170,3 +170,64 @@ def test_delete_source_not_found(monkeypatch):
         sid = client.post("/api/sessions").json()["session_id"]
         resp = client.delete(f"/api/sessions/{sid}/sources/ghost")
         assert resp.status_code == 404
+
+
+# ── YouTube host classification (regression for substring-check bug) ──────────
+
+def test_is_youtube_url_real_domains():
+    from app.services.ingest_manager import is_youtube_url
+    assert is_youtube_url("https://www.youtube.com/watch?v=abc") is True
+    assert is_youtube_url("https://youtube.com/watch?v=abc") is True
+    assert is_youtube_url("https://youtu.be/abc") is True
+    assert is_youtube_url("https://m.youtube.com/watch?v=abc") is True
+    assert is_youtube_url("https://music.youtube.com/watch?v=abc") is True
+
+
+def test_is_youtube_url_spoofed_subdomain():
+    """youtube.com.evil.com must NOT be classified as YouTube."""
+    from app.services.ingest_manager import is_youtube_url
+    assert is_youtube_url("https://youtube.com.evil.com/watch?v=abc") is False
+
+
+def test_is_youtube_url_spoofed_path():
+    """evil.example/youtu.be/abc must NOT be classified as YouTube."""
+    from app.services.ingest_manager import is_youtube_url
+    assert is_youtube_url("https://evil.example/youtu.be/abc") is False
+
+
+def test_ingest_url_spoofed_youtube_routes_to_web():
+    """Spoofed YouTube URLs must create a 'web' source record, not 'youtube'."""
+    ss, vs, emb = _make_deps()
+
+    captured: list[dict] = []
+
+    async def _fake_ingest_url(sid, url, **_):
+        session = ss.get(sid)
+        from app.services.ingest_manager import is_youtube_url
+        from app.models.session import SourceRecord
+        src_type = "youtube" if is_youtube_url(url) else "web"
+        captured.append({"url": url, "type": src_type})
+        src = SourceRecord(id="fakeid", type=src_type, name=url, status="processing")
+        session.sources["fakeid"] = src
+        return "fakeid"
+
+    spoofed_urls = [
+        "https://youtube.com.evil.com/watch?v=abc",
+        "https://evil.example/youtu.be/abc",
+    ]
+    for url in spoofed_urls:
+        captured.clear()
+        with (
+            patch("app.api.sessions.ingest_url", side_effect=_fake_ingest_url),
+            patch("app.api.sessions.get_session_store", return_value=ss),
+        ):
+            client = TestClient(app)
+            sid = client.post("/api/sessions").json()["session_id"]
+            resp = client.post(
+                f"/api/sessions/{sid}/sources/url",
+                json={"url": url},
+            )
+        assert resp.status_code == 202
+        assert captured[0]["type"] == "web", (
+            f"Expected 'web' for {url!r}, got {captured[0]['type']!r}"
+        )

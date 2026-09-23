@@ -164,20 +164,28 @@ class OpenAICompatClient:
             "temperature": temperature,
             "stream": False,
         }
-        try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
-                resp = await client.post(
-                    f"{self._base}/chat/completions",
-                    headers=self._headers,
-                    json=payload,
-                )
-                try:
-                    resp.raise_for_status()
-                except httpx.HTTPStatusError as exc:
-                    raise _map_http_error(exc) from exc
-                return resp.json()["choices"][0]["message"]["content"]
-        except httpx.TimeoutException as exc:
-            raise AppError("LLM_TIMEOUT", "LLM request timed out.", 502) from exc
+        for attempt in range(2):
+            try:
+                async with httpx.AsyncClient(timeout=self._timeout) as client:
+                    resp = await client.post(
+                        f"{self._base}/chat/completions",
+                        headers=self._headers,
+                        json=payload,
+                    )
+                    try:
+                        resp.raise_for_status()
+                    except httpx.HTTPStatusError as exc:
+                        if exc.response.status_code == 429 and attempt == 0:
+                            retry_after = int(exc.response.headers.get("retry-after", "2"))
+                            if retry_after <= 10:
+                                logger.warning("Rate limited, retrying after %ss", retry_after)
+                                await _asyncio.sleep(retry_after)
+                                continue
+                        raise _map_http_error(exc) from exc
+                    return resp.json()["choices"][0]["message"]["content"]
+            except httpx.TimeoutException as exc:
+                raise AppError("LLM_TIMEOUT", "LLM request timed out.", 502) from exc
+        raise AppError("LLM_RATE_LIMIT", "LLM rate limit hit after retry.", 502)
 
     async def complete_json(
         self,

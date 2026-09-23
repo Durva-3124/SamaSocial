@@ -31,3 +31,20 @@
   color: var(--color-primary);
   background: var(--color-bg);
 }
+
+.navbar {
+  min-height: 48px;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  position: relative;
+  z-index: 2;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04), var(--shadow-panel);
+}
+
+.navbar-brand { font-family: var(--font-sans); font-weight: 600; letter-spacing: -0.01em; position: relative; padding-left: 14px; }
+.navbar-brand::before { content: ""; position: absolute; left: 0; top: 50%; width: 6px; height: 6px; transform: translateY(-50%); border-radius: 50%; background: var(--color-cyan); box-shadow: 0 0 12px var(--color-cyan); }
+.navbar-links { gap: var(--spacing-xs); }
+.navbar-links a { font-family: var(--font-mono); font-size: var(--font-size-sm); letter-spacing: 0.02em; }
+.navbar-links a { position: relative; }
+.navbar-links a:hover, .navbar-links a.active { background: var(--color-surface-hover); }
+.navbar-links a.active::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -9px; height: 2px; background: var(--color-primary); box-shadow: 0 0 10px var(--color-primary); }

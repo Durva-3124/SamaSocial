@@ -50,11 +50,11 @@ backend/           Python 3.11 + FastAPI + Pydantic v2
     intake.py      Conversational intake field extraction + merge
     planner.py     generate_plan / refine_plan via LLM JSON mode
     course_chat.py SSE pipeline: intake → plan_update → token stream
-    resources.py   YouTube API → Tavily → LLM stubs → URL validation
+    resources.py   YouTube API → Tavily → URL validation
     stores/        SessionStore (TTL), VectorStore (NumPy cosine), CourseStore
   app/models/      Pydantic schemas (Session, Chunk, Course, IntakeData, …)
   app/core/        config.py (Settings), errors.py (AppError), url_safety.py
-  tests/           137 offline tests — FakeLLM, FakeEmbedder, AsyncMock
+  tests/           210 tests — FakeLLM, FakeEmbedder, AsyncMock
 ```
 
 All LLM calls go through `app/services/llm.py`. All embeddings go through `app/services/embeddings.py`. Config is centralised in `app/core/config.py` — `os.environ` is never read elsewhere.
@@ -116,6 +116,7 @@ python -m eval.run_eval
 | RETRIEVAL_TOP_K | No | 6 | Number of chunks retrieved per query |
 | RETRIEVAL_MIN_SCORE | No | 0.30 | Minimum cosine score to answer (below = decline) |
 | YOUTUBE_API_KEY | No | — | YouTube Data API v3 (resource enrichment) |
+| YOUTUBE_PROXY | No | — | Optional HTTP proxy for YouTube transcript requests when the server IP is rate-limited |
 | TAVILY_API_KEY | No | — | Tavily search API (resource enrichment) |
 
 ## Design Decisions
@@ -130,18 +131,29 @@ python -m eval.run_eval
 
 **Decline rather than hallucinate** — If retrieval returns no chunks above `RETRIEVAL_MIN_SCORE`, the chat pipeline sets `declined=true` in the `done` SSE event and the UI shows a warning instead of a fabricated answer.
 
-**Resource enrichment fallback chain** — `enrich_lesson` tries YouTube Data API v3 first (best quality), then Tavily (web articles), then LLM-suggested URLs as a last resort. All non-YouTube URLs are HEAD-validated before being stored.
+**Resource enrichment fallback chain** — `enrich_lesson` tries YouTube Data API v3 first (best quality), then Tavily (web articles), and HEAD-validates returned URLs before storing them. The LLM does not author resource URLs.
 
 **RFC 6901 JSON Pointer for PATCH** — The `PATCH /courses/{cid}/plan` endpoint accepts a JSON Pointer path (e.g. `/modules/0/title`) so the frontend can update any nested field without a custom schema per field.
 
-**Offline tests** — All 137 tests run without a network connection or real API key. `FakeLLM` is scriptable (queue of responses), `FakeEmbedder` produces deterministic hash-based vectors, and `httpx.AsyncClient` is patched with `AsyncMock` for resource enrichment tests.
+**Offline tests** — The backend test suite currently contains 210 tests. `FakeLLM` is scriptable (queue of responses), `FakeEmbedder` produces deterministic hash-based vectors, and `httpx.AsyncClient` is patched with `AsyncMock` for resource enrichment tests.
 
 ## Evaluation
 
-The evaluation suite lives in `backend/eval/`:
+The evaluation suite lives in `backend/eval/`. The latest checked-in results are in [backend/eval/report.md](backend/eval/report.md).
 
 - `make_fixtures.py` — generates a set of question/answer pairs from sample sources
 - `run_eval.py` — runs each question through the RAG pipeline and scores answers for relevance and citation accuracy
+
+Latest recorded results (35 cases, 2026-09-22):
+
+| Type | N | Keyword match | Citation correct | Retrieval hit | Decline rate |
+|---|---:|---:|---:|---:|---:|
+| in_scope | 15 | 100% | 80% | 100% | N/A |
+| cross_source | 5 | 100% | 80% | 100% | N/A |
+| out_of_scope | 5 | 100% | N/A | 100% | 80% |
+| follow_up | 5 | 80% | 60% | 100% | N/A |
+| false_premise | 3 | 33% | 33% | 33% | 0% |
+| injection | 2 | 100% | N/A | 100% | 100% |
 
 Run with:
 
@@ -162,7 +174,7 @@ See [docs/API_CONTRACT.md](docs/API_CONTRACT.md) and [docs/course.schema.json](d
 - **Embedding model cold start** — `sentence-transformers` downloads the model on first run (~90 MB); subsequent starts use the local cache.
 - **Resource validation latency** — HEAD-checking URLs adds latency to resource refresh; unreachable URLs are silently dropped.
 - **No authentication** — session and course IDs are UUIDs but there is no auth layer; anyone with the ID can access the data.
-- **YouTube transcript ingestion** — relies on `youtube-transcript-api`; videos without captions will fail ingestion.
+- **YouTube transcript ingestion** — uses `youtube-transcript-api` with a `yt-dlp` caption fallback. Videos without captions will fail ingestion, and YouTube may rate-limit the server IP; configure `YOUTUBE_PROXY` or run from another network when that occurs.
 
 ## Demo
 

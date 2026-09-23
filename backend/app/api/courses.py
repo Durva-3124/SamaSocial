@@ -1,5 +1,4 @@
 """Course planner API routes."""
-import json
 import logging
 from collections.abc import AsyncIterator
 
@@ -9,6 +8,7 @@ from pydantic import BaseModel
 
 from app.core.config import get_settings
 from app.core.errors import AppError
+from app.core.sse import sse as _sse
 from app.models.course import missing_intake_fields
 from app.services.course_chat import course_chat_stream
 from app.services.plan_ops import apply_patch
@@ -75,10 +75,6 @@ async def patch_plan(cid: str, body: PatchBody) -> dict:
 
 class RefreshBody(BaseModel):
     lesson_id: str | None = None
-
-
-def _sse(event: str, data: dict) -> str:
-    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
 async def _refresh_stream(cid: str, lesson_id: str | None) -> AsyncIterator[str]:

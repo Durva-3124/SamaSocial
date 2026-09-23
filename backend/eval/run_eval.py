@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 from datetime import datetime, UTC
 from pathlib import Path
 
 from app.core.config import get_settings
+from app.core.errors import AppError
 from app.models.session import Session, SourceRecord
 from app.services.embeddings import get_embedder
 from app.services.ingestion.pdf import ingest_pdf
@@ -55,6 +57,28 @@ def _expected_locators(case: dict) -> list[str]:
         for fid in case.get("expected_fact_ids", [])
         if fid in _FACTS_BY_ID
     ]
+
+
+def _parse_retry_after(exc: Exception) -> float:
+    """Parse the retry_after value from AppError or exception message."""
+    if hasattr(exc, "retry_after") and isinstance(getattr(exc, "retry_after"), (int, float)):
+        return float(getattr(exc, "retry_after"))
+    msg = getattr(exc, "message", "") or str(exc)
+    match = re.search(r"Retry after (\d+(?:\.\d+)?)s?", msg, re.IGNORECASE)
+    if match:
+        try:
+            return float(match.group(1))
+        except ValueError:
+            pass
+    return 15.0
+
+
+def _is_rate_limit(exc: Exception) -> bool:
+    """Check if exception represents a rate limit error."""
+    if isinstance(exc, AppError) and exc.code == "LLM_RATE_LIMIT":
+        return True
+    msg = (getattr(exc, "message", "") or str(exc)).lower()
+    return "rate limit" in msg or "429" in msg
 
 
 # ── ingestion helpers (no HTTP — feed bytes/strings directly) ─────────────────
@@ -173,56 +197,109 @@ async def run_case(
     else:
         result["retrieval_hit"] = retrieval_hit(retrieved_chunks, case["expected_keywords"])
 
-    # Stream answer at temperature=0 for determinism
-    t0 = time.monotonic()
-    ttft_set = False
-    answer_parts: list[str] = []
-    citations: list[dict] = []
-    declined = False
+    # Stream answer at temperature=0 for determinism, with rate-limit retry
+    max_retries = 2
+    retries_used = 0
 
-    async for sse in chat_stream(
-        session, question, "normal",
-        llm=llm, embedder=retriever._embedder, vector_store=retriever._store,
-        temperature=0.0,
-    ):
-        if not ttft_set and '"text"' in sse:
-            result["ttft_ms"] = int((time.monotonic() - t0) * 1000)
-            ttft_set = True
-        if sse.startswith("event: token"):
-            data = json.loads(sse.split("data: ", 1)[1])
-            answer_parts.append(data.get("text", ""))
-        elif sse.startswith("event: citations"):
-            data = json.loads(sse.split("data: ", 1)[1])
-            citations = data.get("items", [])
-        elif sse.startswith("event: done"):
-            data = json.loads(sse.split("data: ", 1)[1])
-            declined = data.get("declined", False)
+    async def _run_chat_stream() -> tuple[str, list[dict], bool, int, int]:
+        """Run chat_stream and return (answer, citations, declined, ttft_ms, total_ms)."""
+        t0 = time.monotonic()
+        ttft_set = False
+        answer_parts: list[str] = []
+        citations: list[dict] = []
+        declined = False
+        ttft_ms = 0
 
-    result["total_ms"] = int((time.monotonic() - t0) * 1000)
-    answer = "".join(answer_parts)
-    result["answer"] = answer
-    result["citations"] = citations
-    result["declined"] = is_declined(answer, declined)
+        async for sse in chat_stream(
+            session, question, "normal",
+            llm=llm, embedder=retriever._embedder, vector_store=retriever._store,
+            temperature=0.0,
+        ):
+            if not ttft_set and '"text"' in sse:
+                ttft_ms = int((time.monotonic() - t0) * 1000)
+                ttft_set = True
+            if sse.startswith("event: token"):
+                data = json.loads(sse.split("data: ", 1)[1])
+                answer_parts.append(data.get("text", ""))
+            elif sse.startswith("event: citations"):
+                data = json.loads(sse.split("data: ", 1)[1])
+                citations = data.get("items", [])
+            elif sse.startswith("event: done"):
+                data = json.loads(sse.split("data: ", 1)[1])
+                declined = data.get("declined", False)
+            elif sse.startswith("event: error"):
+                # Check if it's a rate limit error — if so, raise to trigger retry
+                data = json.loads(sse.split("data: ", 1)[1])
+                if data.get("code") == "LLM_RATE_LIMIT":
+                    from app.core.errors import AppError
+                    raise AppError("LLM_RATE_LIMIT", data.get("message", "Rate limited"), 502)
 
-    result["keyword_match"] = keyword_match(answer, case["expected_keywords"])
+        total_ms = int((time.monotonic() - t0) * 1000)
+        return "".join(answer_parts), citations, declined, ttft_ms, total_ms
+
+    while retries_used <= max_retries:
+        try:
+            answer, citations, declined, ttft_ms, total_ms = await _run_chat_stream()
+            result["answer"] = answer
+            result["citations"] = citations
+            result["declined"] = is_declined(answer, declined)
+            result["ttft_ms"] = ttft_ms
+            result["total_ms"] = total_ms
+            break
+        except Exception as exc:
+            if _is_rate_limit(exc) and retries_used < max_retries:
+                retries_used += 1
+                wait_sec = _parse_retry_after(exc) + 2.0
+                print(f"       [rate-limited, sleeping {wait_sec:.1f}s (retry {retries_used}/{max_retries})]")
+                await asyncio.sleep(wait_sec)
+                continue
+            # Not a rate limit, or retries exhausted — record failure and continue
+            if _is_rate_limit(exc):
+                print(f"       [rate limit retries exhausted, marking case as rate-limited]")
+                result["answer"] = ""
+                result["citations"] = []
+                result["declined"] = False
+                result["ttft_ms"] = 0
+                result["total_ms"] = 0
+                result["rate_limited"] = True
+            else:
+                raise
+            break
+
+    result["keyword_match"] = keyword_match(result["answer"], case["expected_keywords"])
 
     # citation_correct: use real locators from facts.json; None if no locators expected
     expected_locs = _expected_locators(case)
-    result["citation_correct"] = citation_correct(citations, expected_locs)
+    result["citation_correct"] = citation_correct(result["citations"], expected_locs)
 
     # Injection resistance (injection sub-type only)
     if case_type == "injection":
         injected_topic = case.get("injected_topic", "")
-        result["injection_resisted"] = injection_resisted(answer, injected_topic)
+        result["injection_resisted"] = injection_resisted(result["answer"], injected_topic)
 
     # Follow-up: run the follow-up question too (just check it doesn't crash)
     if case_type == "follow_up" and case.get("follow_up"):
-        async for _ in chat_stream(
-            session, case["follow_up"], "normal",
-            llm=llm, embedder=retriever._embedder, vector_store=retriever._store,
-            temperature=0.0,
-        ):
-            pass
+        # Follow-up also needs retry logic
+        retries_used = 0
+        while retries_used <= max_retries:
+            try:
+                async for _ in chat_stream(
+                    session, case["follow_up"], "normal",
+                    llm=llm, embedder=retriever._embedder, vector_store=retriever._store,
+                    temperature=0.0,
+                ):
+                    pass
+                break
+            except Exception as exc:
+                if _is_rate_limit(exc) and retries_used < max_retries:
+                    retries_used += 1
+                    wait_sec = _parse_retry_after(exc) + 2.0
+                    print(f"       [rate-limited on follow-up, sleeping {wait_sec:.1f}s (retry {retries_used}/{max_retries})]")
+                    await asyncio.sleep(wait_sec)
+                    continue
+                # Not a rate limit, or retries exhausted — just log and continue
+                print(f"       [follow-up failed: {exc}]")
+                break
 
     return result
 
@@ -292,9 +369,82 @@ def write_report(results: list[dict], summary: dict, settings) -> None:
     print(f"\nReport written to {REPORT_PATH}")
 
 
+# ── pdf debug (c01-c05 only) ──────────────────────────────────────────────────
+
+async def run_pdf_debug() -> None:
+    """Run only c01-c05 and print retrieval/citation/expected side-by-side."""
+    from app.services.chat import chat_stream
+    from eval.scoring import normalise
+
+    embedder = get_embedder()
+    llm = get_llm()
+    vector_store = VectorStore()
+
+    print("Building session from fixtures...")
+    session, _ = await build_session(embedder, vector_store)
+    retriever = Retriever(embedder=embedder, store=vector_store)
+
+    pdf_cases = [c for c in CASES if c["id"] in {"c01", "c02", "c03", "c04", "c05"}]
+
+    for case in pdf_cases:
+        print(f"\n{'='*70}")
+        print(f"Case {case['id']}: {case['question']}")
+
+        # (a) full top-k retrieval with locators
+        retrieved = await retriever.retrieve(session.id, case["question"], top_k=6, min_score=0.0)
+        print(f"\n  (a) Retrieved top-{len(retrieved)} chunks (rank, locator_text, score):")
+        for rank, (chunk, score) in enumerate(retrieved, 1):
+            print(f"      [S{rank}] {chunk.locator_text()!r:30s}  score={score:.4f}")
+
+        # (b) stream and capture which [S#] tags the model used
+        answer_parts: list[str] = []
+        citations: list[dict] = []
+        async for sse in chat_stream(
+            session, case["question"], "normal",
+            llm=llm, embedder=retriever._embedder, vector_store=retriever._store,
+            temperature=0.0,
+        ):
+            if sse.startswith("event: token"):
+                answer_parts.append(json.loads(sse.split("data: ", 1)[1]).get("text", ""))
+            elif sse.startswith("event: citations"):
+                citations = json.loads(sse.split("data: ", 1)[1]).get("items", [])
+
+        print(f"\n  (b) Model-cited chunks (label -> locator_text -> normalised):")
+        cited_normalised: set[str] = set()
+        for c in citations:
+            raw = c.get("locator_text", "")
+            norm = normalise(raw)
+            cited_normalised.add(norm)
+            print(f"      [{c['label']}] raw={raw!r:30s}  normalised={norm!r}")
+        if not citations:
+            print("      (no citations emitted)")
+
+        # (c) expected locators and whether they appear in retrieval or citations
+        expected_locs = _expected_locators(case)
+        retrieved_locs_norm = {normalise(chunk.locator_text()) for chunk, _ in retrieved}
+        print(f"\n  (c) Expected locators from facts.json:")
+        for exp in expected_locs:
+            norm_exp = normalise(exp)
+            in_retrieval = norm_exp in retrieved_locs_norm
+            in_citations = norm_exp in cited_normalised
+            print(f"      raw={exp!r:30s}  normalised={norm_exp!r}")
+            print(f"           in_retrieval={in_retrieval}  in_citations={in_citations}")
+            if not in_retrieval:
+                print(f"           *** RETRIEVAL MISS — expected locator not in top-k ***")
+            elif not in_citations:
+                print(f"           *** CITATION MISS — retrieved but model did not cite it ***")
+
+        await asyncio.sleep(5)
+
+
 # ── main ──────────────────────────────────────────────────────────────────────
 
 async def main() -> None:
+    import sys
+    if "--pdf-debug" in sys.argv:
+        await run_pdf_debug()
+        return
+
     settings = get_settings()
     print(f"Model: {settings.LLM_MODEL}")
 

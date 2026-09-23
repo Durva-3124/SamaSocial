@@ -56,7 +56,9 @@ def _mock_client(status: int = 200, json_body: dict | None = None):
 
 @pytest.mark.asyncio
 async def test_url_reachable_returns_true_on_200():
-    with patch("app.services.resources.httpx.AsyncClient", return_value=_mock_client(200)):
+    client = _mock_client(200)
+    client.head.return_value.url = "https://example.com"
+    with patch("app.services.resources.httpx.AsyncClient", return_value=client):
         assert await _url_reachable("https://example.com") is True
 
 

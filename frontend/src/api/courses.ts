@@ -1,5 +1,19 @@
 import { apiFetch, BASE_URL } from "./client";
 
+export type DifficultyLevel = "beginner" | "intermediate" | "advanced";
+
+export interface Audience {
+  age_group: string;
+  level: DifficultyLevel;
+  prior_knowledge: string;
+}
+
+export interface Duration {
+  weeks: number;
+  sessions_per_week: number;
+  session_minutes: number;
+}
+
 export interface Resource {
   id: string;
   title: string;
@@ -12,28 +26,38 @@ export interface Lesson {
   id: string;
   title: string;
   duration_minutes: number;
+  difficulty: DifficultyLevel;
   objectives: string[];
+  topics: string[];
   resources: Resource[];
 }
 
 export interface Module {
   id: string;
   title: string;
+  difficulty: DifficultyLevel;
+  prerequisites: string[];
   lessons: Lesson[];
 }
 
 export interface Course {
   title: string;
   description: string;
-  level: "beginner" | "intermediate" | "advanced";
+  level: DifficultyLevel;
   total_weeks: number;
+  goals: string[];
+  audience: Audience | null;
+  duration: Duration | null;
   modules: Module[];
 }
 
 export interface IntakeData {
   topic: string | null;
-  level: "beginner" | "intermediate" | "advanced" | null;
+  level: DifficultyLevel | null;
   duration_weeks: number | null;
+  sessions_per_week: number | null;
+  age_group: string | null;
+  prior_knowledge: string | null;
   goals: string[];
   prerequisites: string[];
   extra: Record<string, unknown>;

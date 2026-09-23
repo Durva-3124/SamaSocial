@@ -35,15 +35,21 @@ def test_citation_correct_match():
     assert citation_correct(citations, ["page 3"])
 
 def test_citation_correct_partial_match():
+    # Exact normalised match: "page 3" must NOT match "page 3 of the document"
     citations = [{"locator_text": "page 3 of the document"}]
-    assert citation_correct(citations, ["page 3"])
+    assert citation_correct(citations, ["page 3"]) is False
+
+def test_citation_correct_exact_match_true():
+    # Exact match: locator_text equals the expected string
+    citations = [{"locator_text": "page 3"}]
+    assert citation_correct(citations, ["page 3"]) is True
 
 def test_citation_correct_no_match():
     citations = [{"locator_text": "slide 5"}]
     assert not citation_correct(citations, ["page 3"])
 
 def test_citation_correct_no_expectation():
-    assert citation_correct([], [])
+    assert citation_correct([], []) is None
 
 def test_citation_correct_empty_citations_with_expectation():
     assert not citation_correct([], ["page 1"])

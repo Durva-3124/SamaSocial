@@ -66,6 +66,45 @@ def test_group_transcript_10min_yields_about_10_chunks() -> None:
     assert 8 <= len(groups) <= 12
 
 
+def test_parse_vtt() -> None:
+    from app.services.ingestion.youtube import _parse_vtt
+
+    entries = _parse_vtt(
+        "WEBVTT\n\n00:00:01.000 --> 00:00:03.500\nHello <b>world</b>\n"
+    )
+
+    assert entries == [{"text": "Hello world", "start": 1.0, "duration": 2.5}]
+
+
+def test_blocked_transcript_uses_yt_dlp_fallback() -> None:
+    from app.services.ingestion import youtube
+
+    with (
+        patch("youtube_transcript_api.YouTubeTranscriptApi.list_transcripts", side_effect=RuntimeError("429 Too Many Requests")),
+        patch("app.services.ingestion.youtube._fetch_transcript_with_yt_dlp", return_value=[{"text": "fallback", "start": 0, "duration": 1}]),
+    ):
+        assert youtube._fetch_transcript("dQw4w9WgXcQ") == [
+            {"text": "fallback", "start": 0, "duration": 1}
+        ]
+
+
+def test_empty_caption_response_uses_yt_dlp_fallback() -> None:
+    from app.services.ingestion import youtube
+
+    transcript = MagicMock()
+    transcript.fetch.side_effect = ValueError("no element found: line 1, column 0")
+    transcript_list = MagicMock()
+    transcript_list.find_manually_created_transcript.return_value = transcript
+
+    with (
+        patch("youtube_transcript_api.YouTubeTranscriptApi.list_transcripts", return_value=transcript_list),
+        patch("app.services.ingestion.youtube._fetch_transcript_with_yt_dlp", return_value=[{"text": "fallback", "start": 0, "duration": 1}]),
+    ):
+        assert youtube._fetch_transcript("dQw4w9WgXcQ") == [
+            {"text": "fallback", "start": 0, "duration": 1}
+        ]
+
+
 # ---------------------------------------------------------------------------
 # ingest_youtube (mocked _fetch_transcript and _fetch_title)
 # ---------------------------------------------------------------------------

@@ -2,11 +2,13 @@
 import asyncio
 import logging
 import re
+from xml.etree.ElementTree import ParseError
 from urllib.parse import parse_qs, urlparse
 
 import httpx
 
 from app.core.errors import AppError
+from app.core.config import get_settings
 from app.models.chunk import Chunk, Locator
 from app.services.chunking import split_text
 from app.services.ingestion.base import IngestResult
@@ -15,6 +17,9 @@ logger = logging.getLogger(__name__)
 
 _YT_ID_RE = re.compile(
     r"(?:youtube\.com/(?:watch\?.*v=|shorts/|embed/|live/)|youtu\.be/)([A-Za-z0-9_-]{11})"
+)
+_VTT_TIMESTAMP_RE = re.compile(
+    r"(?P<hours>\d{2}:)?(?P<minutes>\d{2}):(?P<seconds>\d{2})[.,](?P<millis>\d{3})"
 )
 
 
@@ -33,6 +38,72 @@ def parse_video_id(url: str) -> str:
     raise AppError("INVALID_YOUTUBE_URL", f"Could not extract a video ID from: {url}", 422)
 
 
+def _parse_vtt_timestamp(value: str) -> float:
+    match = _VTT_TIMESTAMP_RE.search(value)
+    if not match:
+        return 0.0
+    hours = int((match.group("hours") or "00:")[:-1])
+    minutes = int(match.group("minutes"))
+    seconds = int(match.group("seconds"))
+    millis = int(match.group("millis"))
+    return hours * 3600 + minutes * 60 + seconds + millis / 1000
+
+
+def _parse_vtt(content: str) -> list[dict]:
+    """Convert a WebVTT caption track into the common transcript shape."""
+    entries: list[dict] = []
+    blocks = re.split(r"\n\s*\n", content.replace("\r\n", "\n"))
+    for block in blocks:
+        lines = [line.strip() for line in block.splitlines() if line.strip()]
+        timing_index = next((i for i, line in enumerate(lines) if "-->" in line), None)
+        if timing_index is None:
+            continue
+        timing = lines[timing_index].split("-->", 1)
+        if len(timing) != 2:
+            continue
+        text = re.sub(r"<[^>]+>", "", " ".join(lines[timing_index + 1:])).strip()
+        if text:
+            start = _parse_vtt_timestamp(timing[0])
+            end = _parse_vtt_timestamp(timing[1])
+            entries.append({"text": text, "start": start, "duration": max(0.0, end - start)})
+    return entries
+
+
+def _fetch_transcript_with_yt_dlp(video_id: str) -> list[dict]:
+    """Fallback caption fetcher for servers rate-limited by YouTube HTML."""
+    try:
+        import yt_dlp  # type: ignore[import-untyped]
+
+        options = {
+            "quiet": True,
+            "no_warnings": True,
+            "skip_download": True,
+            "ignore_no_formats_error": True,
+        }
+        proxy = get_settings().YOUTUBE_PROXY
+        if proxy:
+            options["proxy"] = proxy
+        with yt_dlp.YoutubeDL(options) as ydl:
+            info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
+            tracks = info.get("subtitles", {}) or {}
+            for language, captions in (info.get("automatic_captions", {}) or {}).items():
+                tracks.setdefault(language, captions)
+            selected = next(
+                (tracks[language] for language in ("en", "en-US", "en-GB") if language in tracks),
+                next(iter(tracks.values()), []),
+            )
+            track = next((item for item in selected if item.get("ext") == "vtt"), None)
+            if track is None and selected:
+                track = selected[0]
+            if not track or not track.get("url"):
+                return []
+            response = ydl.urlopen(track["url"])
+            return _parse_vtt(response.read().decode("utf-8"))
+    except Exception as exc:
+        logger.warning("yt-dlp transcript fallback failed for %s: %s", video_id, exc)
+        return []
+
+
 def _fetch_transcript(video_id: str) -> list[dict]:
     """Fetch transcript entries [{text, start, duration}] for a video.
 
@@ -46,7 +117,11 @@ def _fetch_transcript(video_id: str) -> list[dict]:
     )
 
     try:
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        proxy = get_settings().YOUTUBE_PROXY
+        transcript_list = YouTubeTranscriptApi.list_transcripts(
+            video_id,
+            proxies={"http": proxy, "https": proxy} if proxy else None,
+        )
     except TranscriptsDisabled:
         raise AppError("TRANSCRIPT_DISABLED", "Transcripts are disabled for this video.", 422)
     except VideoUnavailable:
@@ -54,9 +129,13 @@ def _fetch_transcript(video_id: str) -> list[dict]:
     except Exception as exc:
         msg = str(exc).lower()
         if "blocked" in msg or "ip" in msg or "429" in msg:
+            fallback = _fetch_transcript_with_yt_dlp(video_id)
+            if fallback:
+                logger.info("Used yt-dlp caption fallback for YouTube video %s", video_id)
+                return fallback
             raise AppError(
                 "YOUTUBE_BLOCKED",
-                "YouTube blocked the transcript request from this server. Try another video or run locally.",
+                "YouTube is rate-limiting this server. Set YOUTUBE_PROXY to a proxy with YouTube access, or run the backend from another network.",
                 502,
             )
         raise AppError("TRANSCRIPT_DISABLED", f"Could not fetch transcript: {exc}", 422) from exc
@@ -80,7 +159,20 @@ def _fetch_transcript(video_id: str) -> list[dict]:
         except NoTranscriptFound:
             raise AppError("TRANSCRIPT_DISABLED", "No transcript available for this video.", 422)
 
-    return transcript.fetch()
+    try:
+        return transcript.fetch()
+    except Exception as exc:
+        fallback = _fetch_transcript_with_yt_dlp(video_id)
+        if fallback:
+            logger.info("Used yt-dlp caption fallback for YouTube video %s", video_id)
+            return fallback
+        if isinstance(exc, ParseError) or not str(exc).strip():
+            raise AppError(
+                "YOUTUBE_BLOCKED",
+                "YouTube returned an empty caption response. Set YOUTUBE_PROXY to a proxy with YouTube access, or run the backend from another network.",
+                502,
+            ) from exc
+        raise AppError("TRANSCRIPT_DISABLED", f"Could not fetch transcript: {exc}", 422) from exc
 
 
 def _fetch_title(url: str, video_id: str) -> str:

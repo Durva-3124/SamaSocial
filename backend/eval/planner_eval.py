@@ -7,11 +7,13 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from datetime import datetime, UTC
 from pathlib import Path
 
 from app.core.config import get_settings
+from app.core.errors import AppError
 from app.models.course import Course, IntakeData, missing_intake_fields
 from app.services.llm import get_llm
 from app.services.planner import generate_plan, refine_plan
@@ -27,6 +29,9 @@ SCENARIOS = [
             topic="Python programming basics",
             level="beginner",
             duration_weeks=6,
+            sessions_per_week=3,
+            age_group="teenager",
+            prior_knowledge="none",
             goals=["Build small programs", "Understand variables and loops"],
             prerequisites=[],
         ),
@@ -40,6 +45,9 @@ SCENARIOS = [
             topic="Data structures and algorithms",
             level="intermediate",
             duration_weeks=8,
+            sessions_per_week=4,
+            age_group="college student",
+            prior_knowledge="Basic Python or Java",
             goals=["Implement common data structures", "Analyse time complexity"],
             prerequisites=["Basic Python or Java"],
         ),
@@ -53,6 +61,9 @@ SCENARIOS = [
             topic="Digital marketing fundamentals",
             level="beginner",
             duration_weeks=4,
+            sessions_per_week=2,
+            age_group="adult",
+            prior_knowledge="none",
             goals=["Run a social media campaign", "Understand SEO basics"],
             prerequisites=[],
         ),
@@ -66,6 +77,9 @@ SCENARIOS = [
             topic="Machine learning for software engineers",
             level="intermediate",
             duration_weeks=6,
+            sessions_per_week=3,
+            age_group="professional",
+            prior_knowledge="Python, basic statistics",
             goals=["Train and evaluate ML models", "Understand neural networks"],
             prerequisites=["Python", "Basic statistics"],
         ),
@@ -79,6 +93,9 @@ SCENARIOS = [
             topic="Spoken English for professionals",
             level="beginner",
             duration_weeks=5,
+            sessions_per_week=3,
+            age_group="professional",
+            prior_knowledge="basic written English",
             goals=["Improve pronunciation", "Conduct business conversations"],
             prerequisites=[],
         ),
@@ -95,7 +112,7 @@ def _difficulty_non_decreasing(course: Course) -> list[str]:
     prev = 0
     for mod in course.modules:
         for lesson in mod.lessons:
-            val = order.get(lesson.difficulty if hasattr(lesson, "difficulty") else "beginner", 0)
+            val = order.get(lesson.difficulty, 0)
             if val < prev:
                 violations.append(
                     f"Lesson {lesson.id} difficulty dropped to {getattr(lesson, 'difficulty', 'beginner')}"
@@ -112,7 +129,29 @@ def _schema_valid(course: Course) -> bool:
         return False
 
 
-async def run_scenario(scenario: dict, llm) -> dict:
+def _parse_retry_after(exc: Exception) -> float:
+    """Parse the retry_after value from AppError or exception message."""
+    if hasattr(exc, "retry_after") and isinstance(getattr(exc, "retry_after"), (int, float)):
+        return float(getattr(exc, "retry_after"))
+    msg = getattr(exc, "message", "") or str(exc)
+    match = re.search(r"Retry after (\d+(?:\.\d+)?)s?", msg, re.IGNORECASE)
+    if match:
+        try:
+            return float(match.group(1))
+        except ValueError:
+            pass
+    return 15.0
+
+
+def _is_rate_limit(exc: Exception) -> bool:
+    """Check if exception represents a rate limit error."""
+    if isinstance(exc, AppError) and exc.code == "LLM_RATE_LIMIT":
+        return True
+    msg = (getattr(exc, "message", "") or str(exc)).lower()
+    return "rate limit" in msg or "429" in msg
+
+
+async def run_scenario(scenario: dict, llm, max_retries: int = 2) -> dict:
     intake: IntakeData = scenario["intake"]
     result: dict = {
         "id": scenario["id"],
@@ -127,35 +166,60 @@ async def run_scenario(scenario: dict, llm) -> dict:
         "errors": [],
     }
 
-    t0 = time.monotonic()
-    try:
-        plan = await generate_plan(intake, llm=llm)
-        result["ttf_first_module_ms"] = int((time.monotonic() - t0) * 1000)
-    except Exception as exc:
-        result["errors"].append(f"generate_plan failed: {exc}")
-        return result
+    retries_used = 0
+    plan = None
 
-    result["total_generation_ms"] = int((time.monotonic() - t0) * 1000)
+    # Step 1: generate_plan with rate-limit retry
+    while retries_used <= max_retries:
+        t0 = time.monotonic()
+        try:
+            plan = await generate_plan(intake, llm=llm)
+            result["ttf_first_module_ms"] = int((time.monotonic() - t0) * 1000)
+            result["total_generation_ms"] = int((time.monotonic() - t0) * 1000)
+            break
+        except Exception as exc:
+            if _is_rate_limit(exc) and retries_used < max_retries:
+                retries_used += 1
+                wait_sec = _parse_retry_after(exc) + 2.0
+                print(f"       [rate-limited on generate_plan, sleeping {wait_sec:.1f}s (retry {retries_used}/{max_retries})]")
+                await asyncio.sleep(wait_sec)
+                continue
+            result["errors"].append(f"generate_plan failed: {exc}")
+            return result
+
     result["schema_valid"] = _schema_valid(plan)
     result["difficulty_violations"] = _difficulty_non_decreasing(plan)
     result["module_count"] = len(plan.modules)
 
-    # PATCH a title and verify it survives refinement
+    # Step 2: PATCH a title and verify it survives refinement
     if plan.modules:
         edited_title = plan.modules[0].title + " [EDITED]"
-        # Simulate a patch by directly mutating (same as PATCH endpoint does)
         import json as _json
         data = _json.loads(plan.model_dump_json())
         data["modules"][0]["title"] = edited_title
         patched_plan = Course.model_validate(data)
 
-        try:
-            refined = await refine_plan(
-                patched_plan,
-                scenario["refine_instruction"],
-                [],
-                llm=llm,
-            )
+        refined = None
+        while retries_used <= max_retries:
+            try:
+                refined = await refine_plan(
+                    patched_plan,
+                    scenario["refine_instruction"],
+                    [],
+                    llm=llm,
+                )
+                break
+            except Exception as exc:
+                if _is_rate_limit(exc) and retries_used < max_retries:
+                    retries_used += 1
+                    wait_sec = _parse_retry_after(exc) + 2.0
+                    print(f"       [rate-limited on refine_plan, sleeping {wait_sec:.1f}s (retry {retries_used}/{max_retries})]")
+                    await asyncio.sleep(wait_sec)
+                    continue
+                result["errors"].append(f"refine_plan failed: {exc}")
+                break
+
+        if refined is not None:
             result["edit_persistence"] = refined.modules[0].title == edited_title
 
             # Check refine isolation: if target is m2, only m2 should change
@@ -169,9 +233,6 @@ async def run_scenario(scenario: dict, llm) -> dict:
                 result["refine_isolated"] = all(m.id in original_ids for m in unchanged)
             else:
                 result["refine_isolated"] = True  # no specific target to check
-
-        except Exception as exc:
-            result["errors"].append(f"refine_plan failed: {exc}")
 
     return result
 
@@ -234,7 +295,10 @@ async def main() -> None:
     llm = get_llm()
     results: list[dict] = []
 
-    for scenario in SCENARIOS:
+    for i, scenario in enumerate(SCENARIOS):
+        if i > 0:
+            print("  Sleeping 15s between scenarios to respect TPM limits...")
+            await asyncio.sleep(15)
         print(f"  [{scenario['id']}] {scenario['name']}...")
         r = await run_scenario(scenario, llm)
         results.append(r)
