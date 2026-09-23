@@ -20,6 +20,13 @@ dist/
 .vscode/
 .idea/
 
+# Agent rules and generated planning notes
+.amazonq/
+*-amazonq-*.md
+
+# Design reference exports
+stitch_ui_redesign_assistant/
+
 # OS
 .DS_Store
 Thumbs.db
