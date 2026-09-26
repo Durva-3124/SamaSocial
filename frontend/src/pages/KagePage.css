@@ -1,0 +1,99 @@
+.shader-frame {
+  width: 100%;
+  height: 100svh;
+  min-height: 620px;
+  overflow: hidden;
+  background: #080808;
+}
+
+.shader-frame .landing-page-frame {
+  width: 100%;
+  height: 100%;
+}
+
+.app-dock {
+  position: absolute;
+  top: 22px;
+  left: 50%;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: min(720px, calc(100% - 40px));
+  min-height: 48px;
+  padding: 6px 8px 6px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(16, 15, 14, 0.72);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.28), inset 0 1px rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px) saturate(120%);
+  transform: translateX(-50%);
+}
+
+.app-dock a {
+  color: rgba(255, 248, 235, 0.78);
+  text-decoration: none;
+}
+
+.app-dock__brand,
+.app-dock__links {
+  display: flex;
+  align-items: center;
+}
+
+.app-dock__brand {
+  gap: 9px;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+
+.app-dock__mark {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 50%;
+  color: #22100b;
+  background: #e8c9a2;
+  font-weight: 700;
+}
+
+.app-dock__links {
+  gap: 4px;
+}
+
+.app-dock__links a {
+  padding: 9px 13px;
+  border-radius: 999px;
+  font-size: 12px;
+  transition: color 160ms ease, background 160ms ease;
+}
+
+.app-dock__links a:hover,
+.app-dock__links a:focus-visible {
+  color: #21130e;
+  background: #f2d5ad;
+}
+
+.route-loading {
+  display: grid;
+  min-height: calc(100svh - 58px);
+  place-items: center;
+  color: var(--color-text-muted);
+}
+
+@media (max-width: 620px) {
+  .app-dock {
+    top: 12px;
+    width: calc(100% - 24px);
+  }
+
+  .app-dock__brand > span:last-child {
+    display: none;
+  }
+
+  .app-dock__links a {
+    padding-inline: 9px;
+    font-size: 11px;
+  }
+}

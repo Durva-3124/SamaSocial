@@ -6,7 +6,7 @@ export default function NavBar() {
     <nav className="navbar">
       <span className="navbar-brand">Samasocial AI</span>
       <div className="navbar-links">
-        <NavLink to="/" end className={({ isActive }) => (isActive ? "active" : "")}>
+        <NavLink to="/assistant" className={({ isActive }) => (isActive ? "active" : "")}>
           Learning Assistant
         </NavLink>
         <NavLink to="/planner" className={({ isActive }) => (isActive ? "active" : "")}>
