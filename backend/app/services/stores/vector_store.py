@@ -19,12 +19,28 @@ class VectorStore:
         """Append chunks and their embeddings for a session.
 
         embeddings must be L2-normalised and shape (len(chunks), dim).
+
+        Raises:
+            ValueError: if ``len(chunks) != embeddings.shape[0]``, or if the
+                embedding dimension differs from what is already stored for
+                this session.
         """
+        if len(chunks) != embeddings.shape[0]:
+            raise ValueError(
+                f"chunks/embeddings length mismatch: "
+                f"{len(chunks)} chunks but {embeddings.shape[0]} embedding rows"
+            )
         with self._lock:
             if session_id not in self._data:
                 self._data[session_id] = (list(chunks), embeddings.astype(np.float32))
             else:
                 existing_chunks, existing_vecs = self._data[session_id]
+                if existing_vecs.shape[1] != embeddings.shape[1]:
+                    raise ValueError(
+                        f"embedding dimension mismatch: "
+                        f"store has dim={existing_vecs.shape[1]}, "
+                        f"new embeddings have dim={embeddings.shape[1]}"
+                    )
                 merged_chunks = existing_chunks + list(chunks)
                 merged_vecs = np.vstack([existing_vecs, embeddings.astype(np.float32)])
                 self._data[session_id] = (merged_chunks, merged_vecs)
