@@ -1,14 +1,10 @@
 """PPTX ingestion using python-pptx."""
 import logging
-from typing import TYPE_CHECKING
 
 from app.core.errors import AppError
 from app.models.chunk import Chunk, Locator
 from app.services.chunking import split_text
 from app.services.ingestion.base import IngestResult
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -17,11 +13,11 @@ _MAX_SLIDE_WORDS = 350
 
 def _shape_text(shape) -> str:
     """Recursively extract text from a shape, including group shapes."""
-    from pptx.util import Pt  # noqa: F401
     from pptx.enum.shapes import MSO_SHAPE_TYPE
 
     if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
-        return "\n".join(_shape_text(s) for s in shape.shapes if _shape_text(s))
+        parts = [_shape_text(child) for child in shape.shapes]
+        return "\n".join(part for part in parts if part)
 
     parts: list[str] = []
 

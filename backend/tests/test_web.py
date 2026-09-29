@@ -36,23 +36,15 @@ def _mock_dns():
 
 
 def _make_stream_client(status: int, content: bytes, content_type: str = "text/html"):
-    """Build a mock httpx async streaming client."""
+    """Build a mock client for GET requests and safe redirects."""
     resp = MagicMock()
     resp.status_code = status
-    resp.url = "https://example.com/page"
+    resp.is_redirect = False
+    resp.content = content
     resp.headers = {"content-type": content_type}
 
-    async def _aiter_bytes(chunk_size=8192):
-        yield content
-
-    resp.aiter_bytes = _aiter_bytes
-
-    stream_cm = AsyncMock()
-    stream_cm.__aenter__ = AsyncMock(return_value=resp)
-    stream_cm.__aexit__ = AsyncMock(return_value=False)
-
     client = AsyncMock()
-    client.stream = MagicMock(return_value=stream_cm)
+    client.get = AsyncMock(return_value=resp)
     client.__aenter__ = AsyncMock(return_value=client)
     client.__aexit__ = AsyncMock(return_value=False)
     return client
@@ -114,20 +106,11 @@ async def test_oversized_body_raises_fetch_failed() -> None:
 
     resp = MagicMock()
     resp.status_code = 200
-    resp.url = "https://example.com/page"
+    resp.is_redirect = False
+    resp.content = big
     resp.headers = {"content-type": "text/html"}
-
-    async def _aiter_bytes(chunk_size=8192):
-        # yield in 1 MB chunks
-        for i in range(0, len(big), 1024 * 1024):
-            yield big[i : i + 1024 * 1024]
-
-    resp.aiter_bytes = _aiter_bytes
-    stream_cm = AsyncMock()
-    stream_cm.__aenter__ = AsyncMock(return_value=resp)
-    stream_cm.__aexit__ = AsyncMock(return_value=False)
     client = AsyncMock()
-    client.stream = MagicMock(return_value=stream_cm)
+    client.get = AsyncMock(return_value=resp)
     client.__aenter__ = AsyncMock(return_value=client)
     client.__aexit__ = AsyncMock(return_value=False)
 
