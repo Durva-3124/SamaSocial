@@ -4,7 +4,7 @@ import ChatPanel from "../components/ChatPanel";
 import QuizModal from "../components/QuizModal";
 import SourcePanel from "../components/SourcePanel";
 import { useChat } from "../hooks/useChat";
-import { useSession } from "../hooks/useSession";
+import { useSession, formatSourceActionError } from "../hooks/useSession";
 import "./LearningAssistant.css";
 
 export default function LearningAssistant() {
@@ -25,7 +25,7 @@ export default function LearningAssistant() {
       const qs = await fetchQuiz(sessionId, 5, null);
       setQuizQuestions(qs);
     } catch (e: unknown) {
-      setQuizError(e instanceof Error ? e.message : "Quiz failed");
+      setQuizError(formatSourceActionError(e, "Quiz failed"));
     } finally {
       setQuizLoading(false);
     }
