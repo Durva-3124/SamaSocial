@@ -40,7 +40,7 @@ async def test_summarise_returns_empty_on_llm_failure():
             raise ValueError("boom")
 
     summary, topics = await summarise_source([_chunk("text")], llm=_BadLLM())
-    assert summary == ""
+    assert summary is None
     assert topics == []
 
 

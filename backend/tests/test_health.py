@@ -7,10 +7,13 @@ client = TestClient(app)
 
 
 def test_health() -> None:
-    """GET /api/health returns 200 with status ok."""
+    """GET /api/health returns 200 with status ok, version, and uptime."""
     response = client.get("/api/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["version"] == "0.1.0"
+    assert isinstance(body["uptime_seconds"], float)
 
 
 def test_app_error_handler() -> None:
