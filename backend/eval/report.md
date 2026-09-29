@@ -1,5 +1,7 @@
 # Evaluation Report
 
+> Recorded live evaluation from 2026-09-22. It was not rerun as part of the current repository audit; results depend on the configured LLM and embedder.
+
 Date: 2026-09-22 06:18 UTC
 Model: `openai/gpt-oss-120b`
 Cases: 35

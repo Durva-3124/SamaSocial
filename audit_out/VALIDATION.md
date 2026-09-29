@@ -1,4 +1,6 @@
 # VALIDATION REPORT — Samasocial AI
+
+> Historical snapshot dated 2026-09-22. Findings and command totals below are not verified against the current checkout; use a fresh run for current status.
 **Validator:** Amazon Q automated static analysis  
 **Date:** 2026-09-22  
 **Scope:** F01–F14 from M16_E2E_AUDIT.md + Sections 1–8 of validation spec  

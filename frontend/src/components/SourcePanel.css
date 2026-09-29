@@ -51,6 +51,11 @@
   outline-offset: 1px;
 }
 
+.source-panel__error {
+  color: var(--color-error);
+  font-size: var(--font-size-sm);
+}
+
 .source-list {
   list-style: none;
   padding: 0;
@@ -120,6 +125,13 @@
   flex-wrap: wrap;
   gap: 4px;
   margin-top: 4px;
+}
+
+.source-item__warnings {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
 }
 
 .topic-tag {

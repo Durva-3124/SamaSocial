@@ -92,7 +92,7 @@ async def restructure_syllabus(
     """
     _llm = llm or get_llm()
 
-    pages = await asyncio.to_thread(extract_pdf_pages, data)
+    _total_pages, pages = await asyncio.to_thread(extract_pdf_pages, data)
     if not pages:
         raise AppError(
             "NO_TEXT_LAYER",

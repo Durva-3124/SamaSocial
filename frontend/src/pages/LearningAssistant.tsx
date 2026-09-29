@@ -4,11 +4,11 @@ import ChatPanel from "../components/ChatPanel";
 import QuizModal from "../components/QuizModal";
 import SourcePanel from "../components/SourcePanel";
 import { useChat } from "../hooks/useChat";
-import { useSession } from "../hooks/useSession";
+import { useSession, formatSourceActionError } from "../hooks/useSession";
 import "./LearningAssistant.css";
 
 export default function LearningAssistant() {
-  const { sessionId, sources, loading, error, addFile, addUrlSource, removeSource } = useSession();
+  const { sessionId, sources, loading, uploading, error, addFile, addUrlSource, removeSource } = useSession();
   const { messages, streaming, error: chatError, sendMessage, stop } = useChat();
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[] | null>(null);
   const [quizLoading, setQuizLoading] = useState(false);
@@ -25,7 +25,7 @@ export default function LearningAssistant() {
       const qs = await fetchQuiz(sessionId, 5, null);
       setQuizQuestions(qs);
     } catch (e: unknown) {
-      setQuizError(e instanceof Error ? e.message : "Quiz failed");
+      setQuizError(formatSourceActionError(e, "Quiz failed"));
     } finally {
       setQuizLoading(false);
     }
@@ -41,11 +41,12 @@ export default function LearningAssistant() {
         <SourcePanel
           sources={sources}
           loading={loading}
+          uploading={uploading}
+          error={error}
           onAddFile={addFile}
           onAddUrl={addUrlSource}
           onRemove={removeSource}
         />
-        {error && <p className="la-error">{error}</p>}
         <div className="la-quiz-bar">
           <button
             className="btn btn--secondary la-quiz-btn"

@@ -23,7 +23,11 @@ def _make_pdf(pages: list[str]) -> bytes:
 # ---------------------------------------------------------------------------
 
 def test_three_page_pdf_correct_page_numbers() -> None:
-    data = _make_pdf(["Alpha content here.", "Beta content here.", "Gamma content here."])
+    data = _make_pdf([
+        "Alpha content is present on this page.",
+        "Beta content is present on this page.",
+        "Gamma content is present on this page.",
+    ])
     result = ingest_pdf("src1", "test.pdf", data)
     assert result.source_type == "pdf"
     assert result.name == "test.pdf"
@@ -51,8 +55,9 @@ def test_no_chunk_exceeds_max_words() -> None:
 
 
 def test_no_empty_chunks() -> None:
-    data = _make_pdf(["Hello world."])
+    data = _make_pdf(["Hello world this is a test sentence."])
     result = ingest_pdf("s", "f.pdf", data)
+    assert len(result.chunks) > 0
     for chunk in result.chunks:
         assert chunk.text.strip() != ""
 

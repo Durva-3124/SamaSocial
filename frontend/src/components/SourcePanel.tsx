@@ -5,6 +5,8 @@ import "./SourcePanel.css";
 interface Props {
   sources: SourceRecord[];
   loading: boolean;
+  uploading: boolean;
+  error: string | null;
   onAddFile: (file: File) => void;
   onAddUrl: (url: string) => void;
   onRemove: (id: string) => void;
@@ -23,7 +25,7 @@ const STATUS_LABEL: Record<string, string> = {
   failed: "Failed",
 };
 
-export default function SourcePanel({ sources, loading, onAddFile, onAddUrl, onRemove }: Props) {
+export default function SourcePanel({ sources, loading, uploading, error, onAddFile, onAddUrl, onRemove }: Props) {
   const [url, setUrl] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -39,6 +41,10 @@ export default function SourcePanel({ sources, loading, onAddFile, onAddUrl, onR
     if (trimmed) { onAddUrl(trimmed); setUrl(""); }
   }
 
+  // The URL form must be disabled while a file upload is in progress (uploading=true)
+  // so the user cannot submit a URL while the backend is accepting the file body.
+  const urlFormDisabled = loading;
+
   return (
     <aside className="source-panel">
       <h2 className="source-panel__title">Sources</h2>
@@ -48,8 +54,9 @@ export default function SourcePanel({ sources, loading, onAddFile, onAddUrl, onR
           className="btn btn--primary"
           onClick={() => fileRef.current?.click()}
           disabled={loading}
+          aria-busy={uploading}
         >
-          + Upload file
+          {uploading ? "Uploading..." : "+ Upload file"}
         </button>
         <input
           ref={fileRef}
@@ -67,31 +74,44 @@ export default function SourcePanel({ sources, loading, onAddFile, onAddUrl, onR
           placeholder="YouTube or webpage URL"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          disabled={loading}
+          disabled={urlFormDisabled}
+          aria-label="YouTube or webpage URL"
         />
-        <button className="btn btn--secondary" type="submit" disabled={loading || !url.trim()}>
-          Add
+        <button
+          className="btn btn--secondary"
+          type="submit"
+          disabled={urlFormDisabled || !url.trim()}
+          aria-busy={loading && !uploading}
+        >
+          {loading && !uploading ? "Adding URL..." : "Add"}
         </button>
       </form>
 
-      <ul className="source-list">
+      {error && <p className="source-panel__error" role="alert">{error}</p>}
+
+      <ul className="source-list" aria-live="polite" aria-label="Source ingestion status">
         {sources.length === 0 && (
           <li className="source-list__empty">No sources yet.</li>
         )}
         {sources.map((s) => (
           <li key={s.id} className={`source-item source-item--${s.status}`}>
-            <span className="source-item__icon">{TYPE_ICON[s.type] ?? "📁"}</span>
+            <span className="source-item__icon" aria-hidden="true">{TYPE_ICON[s.type] ?? "📁"}</span>
             <div className="source-item__info">
               <span className="source-item__name" title={s.name}>{s.name}</span>
               <span className="source-item__meta">
-                {STATUS_LABEL[s.status]}
-                {s.status === "ready" && ` · ${s.chunk_count} chunks`}
+                {STATUS_LABEL[s.status] ?? s.status}
+                {s.status === "ready" && ` · ${s.chunk_count} chunk${s.chunk_count === 1 ? "" : "s"}`}
                 {s.status === "failed" && s.error && ` · ${s.error}`}
               </span>
               {s.topics.length > 0 && (
                 <div className="source-item__topics">
                   {s.topics.map((t) => <span key={t} className="topic-tag">{t}</span>)}
                 </div>
+              )}
+              {s.warnings.length > 0 && (
+                <ul className="source-item__warnings">
+                  {s.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+                </ul>
               )}
             </div>
             <button

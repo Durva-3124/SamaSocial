@@ -53,6 +53,12 @@ class SessionStore:
             logger.debug("Evicting expired session %s", sid)
             del self._sessions[sid]
             self._free_vectors(sid)
+        if expired:
+            logger.info(
+                "Evicted %d expired session(s); %d remaining",
+                len(expired),
+                len(self._sessions),
+            )
 
     def _free_vectors(self, session_id: str) -> None:
         """Delete embeddings for a session from the vector store."""

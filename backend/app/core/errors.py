@@ -16,6 +16,13 @@ class AppError(Exception):
         self.message = message
         self.status_code = status_code
 
+    def __repr__(self) -> str:  # pragma: no cover
+        return (
+            f"AppError(code={self.code!r}, "
+            f"message={self.message!r}, "
+            f"status_code={self.status_code})"
+        )
+
 
 async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
     """Return a consistent {error: {code, message}} JSON response."""

@@ -79,7 +79,7 @@ async def test_restructure_syllabus_condenses_long_text():
     # Patch extract_pdf_pages to return long text
     with patch(
         "app.services.syllabus.extract_pdf_pages",
-        return_value=[(1, long_text)],
+        return_value=(1, [(1, long_text)]),
     ):
         # condense returns a summary, then restructure returns the course
         llm = FakeLLM(script=["condensed syllabus text", _course_json()])

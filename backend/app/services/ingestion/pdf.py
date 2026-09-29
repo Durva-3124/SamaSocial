@@ -14,35 +14,35 @@ _MIN_TEXT_CHARS = 10
 _BLANK_PAGE_THRESHOLD = 0.30
 
 
-def extract_pdf_pages(data: bytes) -> list[tuple[int, str]]:
-    """Extract (1-based page number, text) pairs from PDF bytes.
+def extract_pdf_pages(data: bytes) -> tuple[int, list[tuple[int, str]]]:
+    """Open the PDF once and return (total_pages, [(1-based page number, text)]).
 
-    Skips blank pages. Reused by the syllabus feature.
+    Skips blank/image-only pages. Reused by the syllabus feature.
+
+    Raises:
+        AppError: ``INVALID_PDF`` (422) when the bytes are not a valid PDF.
     """
     try:
         doc = fitz.open(stream=data, filetype="pdf")
     except Exception as exc:
         raise AppError("INVALID_PDF", "The file is not a valid PDF.", 422) from exc
 
+    total_pages = len(doc)
     pages: list[tuple[int, str]] = []
-    for i, page in enumerate(doc, start=1):
-        text = page.get_text().strip()
-        if text:
-            pages.append((i, text))
-    doc.close()
-    return pages
+    try:
+        for i, page in enumerate(doc, start=1):
+            text = page.get_text().strip()
+            if text:
+                pages.append((i, text))
+    finally:
+        doc.close()
+
+    return total_pages, pages
 
 
 def ingest_pdf(source_id: str, filename: str, data: bytes) -> IngestResult:
     """Ingest a PDF file into chunks with page locators."""
-    try:
-        doc = fitz.open(stream=data, filetype="pdf")
-        total_pages = len(doc)
-        doc.close()
-    except Exception as exc:
-        raise AppError("INVALID_PDF", "The file is not a valid PDF.", 422) from exc
-
-    pages = extract_pdf_pages(data)
+    total_pages, pages = extract_pdf_pages(data)
 
     total_text = " ".join(t for _, t in pages)
     if len(total_text) < _MIN_TEXT_CHARS:

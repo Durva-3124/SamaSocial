@@ -1,4 +1,5 @@
 """Webpage ingestion with SSRF protection and heading-based chunking."""
+import html as _html
 import logging
 import re
 from urllib.parse import urlparse
@@ -7,7 +8,7 @@ import httpx
 import trafilatura
 
 from app.core.errors import AppError
-from app.core.url_safety import validate_public_url
+from app.core.url_safety import follow_safe_redirects
 from app.models.chunk import Chunk, Locator
 from app.services.chunking import split_text
 from app.services.ingestion.base import IngestResult
@@ -16,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 _MAX_BYTES = 5 * 1024 * 1024  # 5 MB
 _FETCH_TIMEOUT = 15.0
-_MAX_REDIRECTS = 3
 _MIN_CONTENT_CHARS = 200
 _USER_AGENT = (
     "Mozilla/5.0 (compatible; SamasocialBot/1.0; +https://github.com/Durva-3124/SamaSocial)"
@@ -47,39 +47,33 @@ def _split_by_headings(markdown: str) -> list[tuple[str, str]]:
     return sections
 
 
-async def ingest_web(source_id: str, url: str) -> IngestResult:
-    """Fetch a webpage and ingest it into heading-based chunks."""
-    validate_public_url(url)
+async def _fetch_html(url: str) -> bytes:
+    """Fetch a page, validating the URL and every redirect hop *before* fetching it.
 
+    The redirect walk itself lives in :func:`app.core.url_safety.follow_safe_redirects`
+    so that the API layer, the ingest manager and this ingestor all share one
+    implementation of "how far may we safely follow this URL".
+    """
     try:
         async with httpx.AsyncClient(
             timeout=_FETCH_TIMEOUT,
-            max_redirects=_MAX_REDIRECTS,
+            follow_redirects=False,  # redirects are followed below, one safe hop at a time
             headers={"User-Agent": _USER_AGENT},
-            follow_redirects=True,
         ) as client:
-            async with client.stream("GET", url) as resp:
-                # Re-validate after redirects
-                final_url = str(resp.url)
-                if final_url != url:
-                    validate_public_url(final_url)
+            response, _final_url = await follow_safe_redirects(client, url)
 
-                if resp.status_code >= 400:
-                    raise AppError(
-                        "FETCH_FAILED",
-                        f"The page returned {resp.status_code}.",
-                        422,
-                    )
+            if response.status_code >= 400:
+                raise AppError(
+                    "FETCH_FAILED",
+                    f"The page returned {response.status_code}.",
+                    422,
+                )
 
-                content_type = resp.headers.get("content-type", "")
-                if "html" not in content_type.lower():
-                    raise AppError("NOT_HTML", "The URL did not return an HTML page.", 422)
+            content_type = response.headers.get("content-type", "")
+            if "html" not in content_type.lower():
+                raise AppError("NOT_HTML", "The URL did not return an HTML page.", 422)
 
-                body = b""
-                async for chunk in resp.aiter_bytes(chunk_size=8192):
-                    body += chunk
-                    if len(body) > _MAX_BYTES:
-                        raise AppError("FETCH_FAILED", "Page exceeds the 5 MB size limit.", 422)
+            body = response.content
 
     except httpx.TooManyRedirects as exc:
         raise AppError("FETCH_FAILED", "Too many redirects.", 422) from exc
@@ -89,6 +83,16 @@ async def ingest_web(source_id: str, url: str) -> IngestResult:
         raise
     except Exception as exc:
         raise AppError("FETCH_FAILED", f"Could not fetch the page: {exc}", 422) from exc
+
+    if len(body) > _MAX_BYTES:
+        raise AppError("FETCH_FAILED", "Page exceeds the 5 MB size limit.", 422)
+
+    return body
+
+
+async def ingest_web(source_id: str, url: str) -> IngestResult:
+    """Fetch a webpage and ingest it into heading-based chunks."""
+    body = await _fetch_html(url)
 
     html = body.decode("utf-8", errors="replace")
 
@@ -107,9 +111,14 @@ async def ingest_web(source_id: str, url: str) -> IngestResult:
             422,
         )
 
-    # Derive page title and domain for naming
+    # Derive page title and domain for naming; unescape HTML entities so the
+    # stored name shows "Tom & Jerry" not "Tom &amp; Jerry".
     title_match = re.search(r"<title[^>]*>([^<]+)</title>", html, re.IGNORECASE)
-    page_title = title_match.group(1).strip() if title_match else urlparse(url).netloc
+    page_title = (
+        _html.unescape(title_match.group(1).strip())
+        if title_match
+        else urlparse(url).netloc
+    )
 
     sections = _split_by_headings(markdown)
 

@@ -3,39 +3,51 @@ import asyncio
 import logging
 import re
 from xml.etree.ElementTree import ParseError
-from urllib.parse import parse_qs, urlparse
 
 import httpx
 
 from app.core.errors import AppError
 from app.core.config import get_settings
+from app.core.url_safety import ParsedUrl
 from app.models.chunk import Chunk, Locator
 from app.services.chunking import split_text
 from app.services.ingestion.base import IngestResult
 
 logger = logging.getLogger(__name__)
 
-_YT_ID_RE = re.compile(
-    r"(?:youtube\.com/(?:watch\?.*v=|shorts/|embed/|live/)|youtu\.be/)([A-Za-z0-9_-]{11})"
-)
 _VTT_TIMESTAMP_RE = re.compile(
     r"(?P<hours>\d{2}:)?(?P<minutes>\d{2}):(?P<seconds>\d{2})[.,](?P<millis>\d{3})"
 )
 
 
 def parse_video_id(url: str) -> str:
-    """Extract the 11-char video ID from any YouTube URL format."""
-    # Try regex first (handles most cases)
-    m = _YT_ID_RE.search(url)
-    if m:
-        return m.group(1)
-    # Fallback: parse query string
-    parsed = urlparse(url)
-    if "youtube.com" in parsed.netloc:
-        qs = parse_qs(parsed.query)
-        if "v" in qs:
-            return qs["v"][0]
-    raise AppError("INVALID_YOUTUBE_URL", f"Could not extract a video ID from: {url}", 422)
+    """Extract the 11-char video ID from a YouTube URL.
+
+    Delegates to :func:`app.core.url_safety.extract_youtube_video_id`, the
+    single authoritative extractor. The id is looked up from the *parsed*
+    hostname, path and query — never by scanning the raw URL string — so a
+    spoofed host such as ``youtube.com.evil.com`` or ``evil.com/youtu.be/x``
+    can never yield a video id.
+
+    Raises:
+        AppError: ``INVALID_YOUTUBE_URL`` (422) when the URL is not a YouTube
+            URL carrying a well-formed video id.
+    """
+    from app.core.url_safety import classify_url
+
+    try:
+        parsed = classify_url(url)
+    except AppError as exc:
+        raise AppError("INVALID_YOUTUBE_URL", "That is not a valid YouTube URL.", 422) from exc
+
+    if not parsed.is_youtube or not parsed.video_id:
+        raise AppError(
+            "INVALID_YOUTUBE_URL",
+            "Could not extract a YouTube video ID from that URL.",
+            422,
+        )
+    return parsed.video_id
+
 
 
 def _parse_vtt_timestamp(value: str) -> float:
@@ -175,12 +187,17 @@ def _fetch_transcript(video_id: str) -> list[dict]:
         raise AppError("TRANSCRIPT_DISABLED", f"Could not fetch transcript: {exc}", 422) from exc
 
 
-def _fetch_title(url: str, video_id: str) -> str:
-    """Fetch video title via oEmbed; falls back to a generic name."""
+def _fetch_title(video_id: str) -> str:
+    """Fetch video title via oEmbed; falls back to a generic name.
+
+    Always queries the canonical watch URL for the extracted id rather than the
+    caller-supplied string, so no user-controlled text is ever sent to a third
+    party as a URL.
+    """
     try:
         resp = httpx.get(
             "https://www.youtube.com/oembed",
-            params={"url": url, "format": "json"},
+            params={"url": f"https://www.youtube.com/watch?v={video_id}", "format": "json"},
             timeout=5.0,
         )
         if resp.status_code == 200:
@@ -230,13 +247,27 @@ def group_transcript(
     return groups
 
 
-async def ingest_youtube(source_id: str, url: str) -> IngestResult:
+async def ingest_youtube(
+    source_id: str,
+    url: str,
+    *,
+    parsed_url: ParsedUrl | None = None,
+) -> IngestResult:
     """Ingest a YouTube video transcript into timestamped chunks."""
-    video_id = parse_video_id(url)
+    if parsed_url is not None:
+        if not parsed_url.is_youtube or not parsed_url.video_id:
+            raise AppError(
+                "INVALID_YOUTUBE_URL",
+                "Could not extract a YouTube video ID from that URL.",
+                422,
+            )
+        video_id = parsed_url.video_id
+    else:
+        video_id = parse_video_id(url)
 
     # Blocking calls run in threads
     entries = await asyncio.to_thread(_fetch_transcript, video_id)
-    title = await asyncio.to_thread(_fetch_title, url, video_id)
+    title = await asyncio.to_thread(_fetch_title, video_id)
 
     groups = group_transcript(entries)
 

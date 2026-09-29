@@ -9,6 +9,7 @@ export interface SourceRecord {
   chunk_count: number;
   summary: string | null;
   topics: string[];
+  warnings: string[];
 }
 
 export interface CitationItem {
@@ -40,23 +41,32 @@ export async function listSources(sid: string): Promise<SourceRecord[]> {
   return data.sources;
 }
 
-export async function uploadFile(sid: string, file: File): Promise<string> {
+export interface UploadFileResult {
+  source_id: string;
+  status: "processing";
+}
+
+export async function uploadFile(sid: string, file: File): Promise<UploadFileResult> {
   const form = new FormData();
   form.append("file", file);
-  const data = await apiFetch<{ source_id: string }>(`/sessions/${sid}/sources/file`, {
+  return apiFetch<UploadFileResult>(`/sessions/${sid}/sources/file`, {
     method: "POST",
     headers: {},
     body: form,
   });
-  return data.source_id;
 }
 
-export async function addUrl(sid: string, url: string): Promise<string> {
-  const data = await apiFetch<{ source_id: string }>(`/sessions/${sid}/sources/url`, {
+export interface AddUrlResult {
+  source_id: string;
+  status: "processing";
+  type: "youtube" | "web";
+}
+
+export async function addUrl(sid: string, url: string): Promise<AddUrlResult> {
+  return apiFetch<AddUrlResult>(`/sessions/${sid}/sources/url`, {
     method: "POST",
     body: JSON.stringify({ url }),
   });
-  return data.source_id;
 }
 
 export async function deleteSource(sid: string, sourceId: string): Promise<void> {

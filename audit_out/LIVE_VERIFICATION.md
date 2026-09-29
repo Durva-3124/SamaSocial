@@ -1,5 +1,7 @@
 # Live Verification Report
 
+> Historical snapshot dated 2026-09-22. Findings and command totals below are not verified against the current checkout; use a fresh run for current status.
+
 Date: 2026-09-22
 Backend: uvicorn app.main:app --port 8000
 pytest: 196 passed, 0 failed
