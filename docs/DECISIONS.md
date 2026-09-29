@@ -19,10 +19,10 @@ If retrieval returns no chunks above `RETRIEVAL_MIN_SCORE`, the chat pipeline se
 `enrich_lesson` tries YouTube Data API v3 first (best quality), then Tavily (web articles). The LLM never authors URLs — all URLs come from API responses. Non-YouTube URLs are HEAD-validated before being stored.
 
 ## RFC 6901 JSON Pointer for PATCH
-`PATCH /courses/{cid}/plan` accepts a JSON Pointer path (e.g. `/modules/0/title`) so the frontend can update any nested field without a custom schema per field. A whitelist in `plan_ops.py` restricts which paths are editable; `id` fields are immutable.
+`PATCH /courses/{cid}/plan` accepts a JSON Pointer path (e.g. `/modules/0/title`), restricted to editable paths in `plan_ops.py`; `id` fields are immutable. Keep the allowlist aligned with `Course` fields because Pydantic ignores unknown fields by default.
 
 ## Offline tests
-All 137 tests run without a network connection or real API key. `FakeLLM` is scriptable (queue of responses), `FakeEmbedder` produces deterministic hash-based vectors, and `httpx` is patched with `AsyncMock` for resource enrichment tests.
+The backend tests use a scriptable `FakeLLM`, deterministic `FakeEmbedder`, and mocked HTTP clients for resource enrichment. Run `pytest -q` from `backend/` to verify the current suite; test totals are intentionally not pinned here because they change with the checkout.
 
 ## SSE for all streaming
 Both chat pipelines (Task 1 and Task 2) use Server-Sent Events over a single HTTP response. This avoids WebSocket complexity while supporting incremental token delivery and structured events (`token`, `citations`, `done`, `plan_update`, `intake_state`).

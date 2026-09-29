@@ -8,7 +8,7 @@ import { useSession } from "../hooks/useSession";
 import "./LearningAssistant.css";
 
 export default function LearningAssistant() {
-  const { sessionId, sources, loading, error, addFile, addUrlSource, removeSource } = useSession();
+  const { sessionId, sources, loading, uploading, error, addFile, addUrlSource, removeSource } = useSession();
   const { messages, streaming, error: chatError, sendMessage, stop } = useChat();
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[] | null>(null);
   const [quizLoading, setQuizLoading] = useState(false);
@@ -41,11 +41,12 @@ export default function LearningAssistant() {
         <SourcePanel
           sources={sources}
           loading={loading}
+          uploading={uploading}
+          error={error}
           onAddFile={addFile}
           onAddUrl={addUrlSource}
           onRemove={removeSource}
         />
-        {error && <p className="la-error">{error}</p>}
         <div className="la-quiz-bar">
           <button
             className="btn btn--secondary la-quiz-btn"

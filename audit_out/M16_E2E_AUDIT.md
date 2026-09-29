@@ -1,5 +1,7 @@
 # M16 End-to-End Audit Report — Samasocial AI
 
+> Historical snapshot dated 2026-09-21. Findings and command totals below are not verified against the current checkout; use a fresh run for current status.
+
 **Auditor:** Amazon Q (automated static + dynamic analysis)
 **Date:** 2026-09-21
 **Scope:** M0–M16 complete (backend + frontend + eval harness)

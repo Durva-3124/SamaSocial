@@ -23,6 +23,7 @@ dist/
 # Agent rules and generated planning notes
 .amazonq/
 *-amazonq-*.md
+.kilo/
 
 # Design reference exports
 stitch_ui_redesign_assistant/

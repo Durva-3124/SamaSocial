@@ -13,6 +13,7 @@ export interface UseSessionReturn {
   sessionId: string | null;
   sources: SourceRecord[];
   loading: boolean;
+  uploading: boolean;
   error: string | null;
   addFile: (file: File) => Promise<void>;
   addUrlSource: (url: string) => Promise<void>;
@@ -22,10 +23,21 @@ export interface UseSessionReturn {
 
 const POLL_INTERVAL = 2000;
 
+export function formatSourceActionError(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    if (error.code === "UNSUPPORTED_FILE") return `Unsupported file: ${error.message}`;
+    if (error.code === "UNSAFE_URL") return `Unsafe URL: ${error.message}`;
+    return error.message || fallback;
+  }
+  if (error instanceof TypeError) return "Network error. Check your connection and try again.";
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 export function useSession(): UseSessionReturn {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sources, setSources] = useState<SourceRecord[]>([]);
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sidRef = useRef<string | null>(null);
@@ -51,13 +63,18 @@ export function useSession(): UseSessionReturn {
           if (e instanceof ApiError && e.status === 404) {
             stopPolling();
             // Session expired — create a new one and notify the user
-            const newSid = await createSession();
-            sidRef.current = newSid;
-            setSessionId(newSid);
-            setSources([]);
-            setError("Your session expired, please re-add sources.");
+            try {
+              const newSid = await createSession();
+              sidRef.current = newSid;
+              setSessionId(newSid);
+              setSources([]);
+              setError("Your session expired, please re-add sources.");
+            } catch (createError: unknown) {
+              setError(formatSourceActionError(createError, "Could not restore your session."));
+            }
+          } else {
+            setError(formatSourceActionError(e, "Could not refresh source status."));
           }
-          // other errors: silent, polling will retry
         }
       }, POLL_INTERVAL);
     },
@@ -74,7 +91,7 @@ export function useSession(): UseSessionReturn {
         setSessionId(sid);
         // Don't start polling until there's something to poll
       })
-      .catch((e: Error) => setError(e.message));
+      .catch((e: unknown) => setError(formatSourceActionError(e, "Could not start a session.")));
     return () => {
       cancelled = true;
       stopPolling();
@@ -87,6 +104,7 @@ export function useSession(): UseSessionReturn {
       if (!sid) return;
       setLoading(true);
       setError(null);
+      setUploading(true);
       try {
         await uploadFile(sid, file);
         const s = await listSources(sid);
@@ -96,8 +114,9 @@ export function useSession(): UseSessionReturn {
           startPolling(sid);
         }
       } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : "Upload failed");
+        setError(formatSourceActionError(e, "Upload failed"));
       } finally {
+        setUploading(false);
         setLoading(false);
       }
     },
@@ -118,7 +137,7 @@ export function useSession(): UseSessionReturn {
           startPolling(sid);
         }
       } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : "Failed to add URL");
+        setError(formatSourceActionError(e, "Failed to add URL"));
       } finally {
         setLoading(false);
       }
@@ -133,7 +152,7 @@ export function useSession(): UseSessionReturn {
       await deleteSource(sid, id);
       setSources((prev) => prev.filter((s) => s.id !== id));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Delete failed");
+      setError(formatSourceActionError(e, "Delete failed"));
     }
   }, []);
 
@@ -145,8 +164,8 @@ export function useSession(): UseSessionReturn {
         setSources(s);
         if (s.some((src) => src.status === "processing")) startPolling(sid);
       })
-      .catch(() => {/* silent */});
+      .catch((e: unknown) => setError(formatSourceActionError(e, "Could not refresh source status.")));
   }, [startPolling]);
 
-  return { sessionId, sources, loading, error, addFile, addUrlSource, removeSource, refreshSources };
+  return { sessionId, sources, loading, uploading, error, addFile, addUrlSource, removeSource, refreshSources };
 }

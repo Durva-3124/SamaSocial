@@ -5,7 +5,7 @@
 Samasocial AI is a two-feature learning platform powered by an OpenAI-compatible LLM.
 
 - **Task 1 — Learning Assistant**: Upload PDFs, PowerPoints, YouTube videos, or web pages and chat with them. The assistant retrieves the most relevant chunks, answers with inline citations, and can generate a multiple-choice quiz from your sources.
-- **Task 2 — Course Planner**: Have a conversation to describe your learning goal. The AI collects your topic, level, and timeline, then generates a structured week-by-week course plan with modules, lessons, and enriched resources. You can refine the plan through follow-up messages or by clicking any field to edit it inline.
+- **Task 2 — Course Planner**: Have a conversation to describe your learning goal. The AI collects required learner and timeline details, then generates a structured course plan with modules and lessons. You can request resource enrichment, refine the plan through follow-up messages, or edit supported titles and the course description inline.
 
 ## Features
 
@@ -20,13 +20,13 @@ Samasocial AI is a two-feature learning platform powered by an OpenAI-compatible
 
 ### Task 2: Course Planner
 
-- Conversational intake — collects topic, level, duration, goals, prerequisites
-- Generates a full course plan (modules → lessons → objectives) once intake is complete
+- Conversational intake — requires topic, level, duration, sessions per week, age group, and prior knowledge; goals and prerequisites are optional
+- Generates a course plan (up to eight modules) once required intake is complete
 - Refines the plan in response to follow-up feedback
-- Inline editing of any title, description, or summary — PATCH sent on blur
-- Resource enrichment per lesson: YouTube API → Tavily → LLM stubs → HEAD validation
+- Inline editing of course, module, and lesson titles plus the course description — PATCH sent on blur
+- Resource enrichment per lesson: YouTube API → Tavily → URL validation
 - Export course plan as JSON
-- Live SSE streaming for all chat and resource-refresh operations
+- Live SSE streaming for chat, syllabus restructuring, and resource-refresh operations
 
 ## Architecture
 
@@ -40,7 +40,7 @@ frontend/          React + Vite + TypeScript
 backend/           Python 3.11 + FastAPI + Pydantic v2
   app/api/         Thin route handlers (sessions, chat, bonus, courses)
   app/services/    Business logic
-    llm.py         Single LLM client (stream_chat, complete_json)
+    llm.py         Single LLM client (stream_chat, complete, complete_json)
     embeddings.py  sentence-transformers embedder (asyncio.to_thread)
     retrieval.py   Retriever — embed query, cosine search, min-score filter
     ingest_manager.py  Background ingest (PDF/PPTX/YouTube/web) + summarise
@@ -54,7 +54,7 @@ backend/           Python 3.11 + FastAPI + Pydantic v2
     stores/        SessionStore (TTL), VectorStore (NumPy cosine), CourseStore
   app/models/      Pydantic schemas (Session, Chunk, Course, IntakeData, …)
   app/core/        config.py (Settings), errors.py (AppError), url_safety.py
-  tests/           210 tests — FakeLLM, FakeEmbedder, AsyncMock
+  tests/           Offline tests — FakeLLM, FakeEmbedder, AsyncMock
 ```
 
 All LLM calls go through `app/services/llm.py`. All embeddings go through `app/services/embeddings.py`. Config is centralised in `app/core/config.py` — `os.environ` is never read elsewhere.
@@ -121,7 +121,7 @@ python -m eval.run_eval
 
 ## Design Decisions
 
-**Single LLM abstraction** — `LLMClient` in `app/services/llm.py` exposes `stream_chat` and `complete_json`. Every feature uses these two methods; swapping providers requires only changing env vars.
+**Single LLM abstraction** — `LLMClient` in `app/services/llm.py` exposes `stream_chat`, `complete`, and `complete_json`. Every feature uses this abstraction; swapping providers requires only changing env vars.
 
 **In-memory stores with TTL eviction** — `SessionStore` and `CourseStore` use a dict + `datetime.now(UTC)` timestamps. No database dependency keeps the stack simple and portable. TTL is configurable via `SESSION_TTL_MINUTES`.
 
@@ -131,11 +131,11 @@ python -m eval.run_eval
 
 **Decline rather than hallucinate** — If retrieval returns no chunks above `RETRIEVAL_MIN_SCORE`, the chat pipeline sets `declined=true` in the `done` SSE event and the UI shows a warning instead of a fabricated answer.
 
-**Resource enrichment fallback chain** — `enrich_lesson` tries YouTube Data API v3 first (best quality), then Tavily (web articles), and HEAD-validates returned URLs before storing them. The LLM does not author resource URLs.
+**Resource enrichment fallback chain** — `enrich_lesson` tries YouTube Data API v3 first, then Tavily (web articles). YouTube URLs are built from API-returned video IDs; Tavily URLs are HEAD-validated before storage. The LLM does not author resource URLs.
 
 **RFC 6901 JSON Pointer for PATCH** — The `PATCH /courses/{cid}/plan` endpoint accepts a JSON Pointer path (e.g. `/modules/0/title`) so the frontend can update any nested field without a custom schema per field.
 
-**Offline tests** — The backend test suite currently contains 210 tests. `FakeLLM` is scriptable (queue of responses), `FakeEmbedder` produces deterministic hash-based vectors, and `httpx.AsyncClient` is patched with `AsyncMock` for resource enrichment tests.
+**Offline tests** — Backend tests use a scriptable `FakeLLM`, deterministic `FakeEmbedder`, and mocked HTTP clients for resource enrichment. Run `pytest -q` from `backend/` for the current count and result.
 
 ## Evaluation
 

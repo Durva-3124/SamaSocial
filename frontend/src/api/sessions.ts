@@ -9,6 +9,7 @@ export interface SourceRecord {
   chunk_count: number;
   summary: string | null;
   topics: string[];
+  warnings: string[];
 }
 
 export interface CitationItem {

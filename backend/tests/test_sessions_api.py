@@ -1,12 +1,17 @@
 """Tests for session + source API endpoints — no network, no real embedder."""
 import asyncio
 import io
+import socket
+import zipfile
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.core.errors import AppError
+from app.api.sessions import upload_file
 from app.services.stores.session_store import SessionStore
 from app.services.stores.vector_store import VectorStore
 from tests.fakes import FakeEmbedder
@@ -31,6 +36,20 @@ def _make_deps():
     vs = VectorStore()
     emb = FakeEmbedder()
     return ss, vs, emb
+
+
+def _mock_dns(ip: str):
+    return patch(
+        "app.core.url_safety.socket.getaddrinfo",
+        return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", (ip, 443))],
+    )
+
+
+def _minimal_pptx() -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("ppt/presentation.xml", "<presentation/>")
+    return buffer.getvalue()
 
 
 # ── session lifecycle ─────────────────────────────────────────────────────────
@@ -85,6 +104,28 @@ def test_upload_file_too_large(monkeypatch):
     config.get_settings.cache_clear()
 
 
+def test_upload_pdf_rejects_mismatched_mime():
+    client = TestClient(app)
+    sid = client.post("/api/sessions").json()["session_id"]
+    resp = client.post(
+        f"/api/sessions/{sid}/sources/file",
+        files={"file": ("notes.pdf", _MINIMAL_PDF, "application/vnd.ms-powerpoint")},
+    )
+    assert resp.status_code == 415
+    assert resp.json()["error"]["code"] == "UNSUPPORTED_FILE"
+
+
+def test_upload_rejects_signature_extension_mismatch():
+    client = TestClient(app)
+    sid = client.post("/api/sessions").json()["session_id"]
+    resp = client.post(
+        f"/api/sessions/{sid}/sources/file",
+        files={"file": ("notes.pptx", _MINIMAL_PDF, "application/octet-stream")},
+    )
+    assert resp.status_code == 415
+    assert resp.json()["error"]["code"] == "UNSUPPORTED_FILE"
+
+
 def test_upload_pdf_returns_202(monkeypatch):
     """202 is returned immediately; background task is patched to a no-op."""
     ss, vs, emb = _make_deps()
@@ -112,14 +153,71 @@ def test_upload_pdf_returns_202(monkeypatch):
     assert "source_id" in body
 
 
+def test_upload_pptx_returns_202():
+    ss, _, _ = _make_deps()
+
+    async def _fake_ingest_file(sid, filename, data, **_):
+        session = ss.get(sid)
+        from app.models.session import SourceRecord
+        session.sources["pptxid"] = SourceRecord(
+            id="pptxid", type="pptx", name=filename, status="processing"
+        )
+        return "pptxid"
+
+    with (
+        patch("app.api.sessions.ingest_file", side_effect=_fake_ingest_file),
+        patch("app.api.sessions.get_session_store", return_value=ss),
+    ):
+        client = TestClient(app)
+        sid = client.post("/api/sessions").json()["session_id"]
+        resp = client.post(
+            f"/api/sessions/{sid}/sources/file",
+            files={"file": ("slides.pptx", _minimal_pptx(), "application/vnd.openxmlformats-officedocument.presentationml.presentation")},
+        )
+
+    assert resp.status_code == 202
+    assert resp.json()["source_id"] == "pptxid"
+
+
+@pytest.mark.asyncio
+async def test_upload_reads_only_one_byte_past_limit():
+    class RecordingUpload:
+        filename = "large.pdf"
+        content_type = "application/pdf"
+
+        def __init__(self):
+            self.read_sizes = []
+
+        async def read(self, size=-1):
+            self.read_sizes.append(size)
+            return b"x" * size
+
+    ss, _, _ = _make_deps()
+    session = ss.create()
+    upload = RecordingUpload()
+
+    with (
+        patch("app.api.sessions.get_settings", return_value=SimpleNamespace(MAX_UPLOAD_MB=0)),
+        patch("app.api.sessions.get_session_store", return_value=ss),
+        pytest.raises(AppError) as exc_info,
+    ):
+        await upload_file(session.id, upload)
+
+    assert exc_info.value.status_code == 413
+    assert upload.read_sizes == [1]
+
+
 # ── URL ingestion ─────────────────────────────────────────────────────────────
 
 def test_add_url_returns_202(monkeypatch):
     ss, vs, emb = _make_deps()
 
-    async def _fake_ingest_url(sid, url, **_):
+    passed = {}
+
+    async def _fake_ingest_url(sid, url, **kwargs):
         session = ss.get(sid)
         from app.models.session import SourceRecord
+        passed.update(kwargs)
         src = SourceRecord(id="urlid", type="web", name=url, status="processing")
         session.sources["urlid"] = src
         return "urlid"
@@ -127,6 +225,7 @@ def test_add_url_returns_202(monkeypatch):
     with (
         patch("app.api.sessions.ingest_url", side_effect=_fake_ingest_url),
         patch("app.api.sessions.get_session_store", return_value=ss),
+        _mock_dns("93.184.216.34"),
     ):
         client = TestClient(app)
         sid = client.post("/api/sessions").json()["session_id"]
@@ -136,6 +235,24 @@ def test_add_url_returns_202(monkeypatch):
         )
     assert resp.status_code == 202
     assert resp.json()["status"] == "processing"
+    assert resp.json()["type"] == "web"
+    assert passed["parsed_url"].kind == "web"
+
+
+def test_add_unsafe_url_returns_structured_422():
+    client = TestClient(app)
+    sid = client.post("/api/sessions").json()["session_id"]
+
+    with _mock_dns("127.0.0.1"):
+        resp = client.post(
+            f"/api/sessions/{sid}/sources/url",
+            json={"url": "https://example.com/"},
+        )
+
+    assert resp.status_code == 422
+    assert resp.json() == {
+        "error": {"code": "UNSAFE_URL", "message": "That URL is not allowed."}
+    }
 
 
 # ── delete source ─────────────────────────────────────────────────────────────
@@ -172,40 +289,16 @@ def test_delete_source_not_found(monkeypatch):
         assert resp.status_code == 404
 
 
-# ── YouTube host classification (regression for substring-check bug) ──────────
-
-def test_is_youtube_url_real_domains():
-    from app.core.url_safety import is_youtube_url
-    assert is_youtube_url("https://www.youtube.com/watch?v=abc") is True
-    assert is_youtube_url("https://youtube.com/watch?v=abc") is True
-    assert is_youtube_url("https://youtu.be/abc") is True
-    assert is_youtube_url("https://m.youtube.com/watch?v=abc") is True
-    assert is_youtube_url("https://music.youtube.com/watch?v=abc") is True
-
-
-def test_is_youtube_url_spoofed_subdomain():
-    """youtube.com.evil.com must NOT be classified as YouTube."""
-    from app.core.url_safety import is_youtube_url
-    assert is_youtube_url("https://youtube.com.evil.com/watch?v=abc") is False
-
-
-def test_is_youtube_url_spoofed_path():
-    """evil.example/youtu.be/abc must NOT be classified as YouTube."""
-    from app.core.url_safety import is_youtube_url
-    assert is_youtube_url("https://evil.example/youtu.be/abc") is False
-
-
 def test_ingest_url_spoofed_youtube_routes_to_web():
     """Spoofed YouTube URLs must create a 'web' source record, not 'youtube'."""
     ss, vs, emb = _make_deps()
 
     captured: list[dict] = []
 
-    async def _fake_ingest_url(sid, url, **_):
+    async def _fake_ingest_url(sid, url, **kwargs):
         session = ss.get(sid)
-        from app.core.url_safety import is_youtube_url
         from app.models.session import SourceRecord
-        src_type = "youtube" if is_youtube_url(url) else "web"
+        src_type = kwargs["parsed_url"].kind
         captured.append({"url": url, "type": src_type})
         src = SourceRecord(id="fakeid", type=src_type, name=url, status="processing")
         session.sources["fakeid"] = src
@@ -220,6 +313,7 @@ def test_ingest_url_spoofed_youtube_routes_to_web():
         with (
             patch("app.api.sessions.ingest_url", side_effect=_fake_ingest_url),
             patch("app.api.sessions.get_session_store", return_value=ss),
+            _mock_dns("93.184.216.34"),
         ):
             client = TestClient(app)
             sid = client.post("/api/sessions").json()["session_id"]

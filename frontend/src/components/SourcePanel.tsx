@@ -5,6 +5,8 @@ import "./SourcePanel.css";
 interface Props {
   sources: SourceRecord[];
   loading: boolean;
+  uploading: boolean;
+  error: string | null;
   onAddFile: (file: File) => void;
   onAddUrl: (url: string) => void;
   onRemove: (id: string) => void;
@@ -23,7 +25,7 @@ const STATUS_LABEL: Record<string, string> = {
   failed: "Failed",
 };
 
-export default function SourcePanel({ sources, loading, onAddFile, onAddUrl, onRemove }: Props) {
+export default function SourcePanel({ sources, loading, uploading, error, onAddFile, onAddUrl, onRemove }: Props) {
   const [url, setUrl] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -49,7 +51,7 @@ export default function SourcePanel({ sources, loading, onAddFile, onAddUrl, onR
           onClick={() => fileRef.current?.click()}
           disabled={loading}
         >
-          + Upload file
+          {uploading ? "Uploading..." : "+ Upload file"}
         </button>
         <input
           ref={fileRef}
@@ -70,11 +72,13 @@ export default function SourcePanel({ sources, loading, onAddFile, onAddUrl, onR
           disabled={loading}
         />
         <button className="btn btn--secondary" type="submit" disabled={loading || !url.trim()}>
-          Add
+          {loading && !uploading ? "Adding URL..." : "Add"}
         </button>
       </form>
 
-      <ul className="source-list">
+      {error && <p className="source-panel__error" role="alert">{error}</p>}
+
+      <ul className="source-list" aria-live="polite" aria-label="Source ingestion status">
         {sources.length === 0 && (
           <li className="source-list__empty">No sources yet.</li>
         )}
@@ -92,6 +96,11 @@ export default function SourcePanel({ sources, loading, onAddFile, onAddUrl, onR
                 <div className="source-item__topics">
                   {s.topics.map((t) => <span key={t} className="topic-tag">{t}</span>)}
                 </div>
+              )}
+              {s.warnings.length > 0 && (
+                <ul className="source-item__warnings">
+                  {s.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+                </ul>
               )}
             </div>
             <button
