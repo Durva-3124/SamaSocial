@@ -151,8 +151,11 @@ async def ingest_url(
     """Ingest a YouTube or web URL. Returns the new source_id.
 
     Classification and SSRF validation happen once, here, through the shared
-    :mod:`app.core.url_safety` path — the same one the API layer uses. The
-    result is passed down so no downstream module has to classify again.
+    :mod:`app.core.url_safety` path — the same one the API layer uses. When
+    ``parsed_url`` is already provided (i.e. the API layer already validated
+    and classified the URL), it is used directly and :func:`validate_ingest_url`
+    is **not** called again — preventing double DNS resolution and ensuring the
+    classification cannot silently change between the two call sites.
 
     Runs in a background task.
     """
@@ -160,9 +163,11 @@ async def ingest_url(
     vs = vector_store or get_vector_store()
     emb = embedder or get_embedder()
 
+    # Use the pre-validated ParsedUrl when available; only validate from scratch
+    # when this function is called directly (e.g. in tests or future integrations).
     # Raises UNSAFE_URL (422) for a non-HTTP(S), credentialed, backslash-bearing
     # or private/loopback/link-local destination.
-    parsed = parsed_url or validate_ingest_url(url)
+    parsed = parsed_url if parsed_url is not None else validate_ingest_url(url)
 
     session = ss.get(session_id)
     source_id = uuid.uuid4().hex

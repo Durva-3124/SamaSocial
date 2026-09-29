@@ -1,5 +1,6 @@
 """FastAPI application entry point."""
 import logging
+import time
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +15,8 @@ from app.core.errors import AppError, app_error_handler, unhandled_error_handler
 logging.basicConfig(level=logging.INFO)
 
 settings = get_settings()
+
+_START_TIME = time.monotonic()
 
 app = FastAPI(title="Samasocial AI", version="0.1.0")
 
@@ -37,4 +40,8 @@ app.include_router(courses_router)
 @app.get("/api/health")
 async def health() -> dict:
     """Health check endpoint."""
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "version": app.version,
+        "uptime_seconds": round(time.monotonic() - _START_TIME, 1),
+    }

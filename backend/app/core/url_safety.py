@@ -94,7 +94,8 @@ _FORBIDDEN_CHARS_RE = re.compile(r"[\x00-\x20\x7f\\]")
 _VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
 #: YouTube path prefixes that carry the video id as the next path segment.
-_YOUTUBE_PATH_PREFIXES: tuple[str, ...] = ("shorts", "embed", "live", "v")
+#: "v" handles legacy /v/VIDEO_ID URLs; "e" handles /e/VIDEO_ID embed aliases.
+_YOUTUBE_PATH_PREFIXES: tuple[str, ...] = ("shorts", "embed", "e", "live", "v")
 
 _UNSAFE_MESSAGE = "That URL is not allowed."
 
@@ -240,20 +241,34 @@ def extract_youtube_video_id(hostname: str, path: str, query: str) -> str | None
     never be lifted out of some unrelated domain. ``extract_youtube_video_id`` is
     only called with a hostname already known to be a YouTube host.
 
+    Handles:
+    - youtube.com/watch?v=ID            (classic watch URL)
+    - youtube.com/watch (bare path)?v=ID (same — path with or without trailing content)
+    - youtube.com/shorts/ID
+    - youtube.com/embed/ID
+    - youtube.com/e/ID                  (short embed alias)
+    - youtube.com/live/ID
+    - youtube.com/v/ID                  (legacy player)
+    - youtu.be/ID                       (short link)
+    - www.youtu.be/ID
+
     Returns ``None`` when no well-formed id is present.
     """
     host = _normalise_hostname(hostname)
     segments = [segment for segment in (path or "").split("/") if segment]
 
     if host in YOUTUBE_SHORT_HOSTS:
+        # youtu.be/VIDEO_ID[?params]  — the first path segment IS the id
         candidate = segments[0] if segments else None
         return candidate if candidate and _VIDEO_ID_RE.match(candidate) else None
 
     if host in YOUTUBE_HOSTS:
+        # Path-prefix style: /shorts/ID, /embed/ID, /e/ID, /live/ID, /v/ID
         if segments and segments[0] in _YOUTUBE_PATH_PREFIXES and len(segments) > 1:
             candidate = segments[1]
             return candidate if _VIDEO_ID_RE.match(candidate) else None
-        if segments[:1] == ["watch"]:
+        # Classic watch URL: /watch?v=ID  — accept both /watch and bare /
+        if not segments or segments[0] == "watch":
             values = parse_qs(query or "").get("v")
             if values and _VIDEO_ID_RE.match(values[0]):
                 return values[0]

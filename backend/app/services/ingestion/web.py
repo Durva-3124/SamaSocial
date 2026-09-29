@@ -1,4 +1,5 @@
 """Webpage ingestion with SSRF protection and heading-based chunking."""
+import html as _html
 import logging
 import re
 from urllib.parse import urlparse
@@ -110,9 +111,14 @@ async def ingest_web(source_id: str, url: str) -> IngestResult:
             422,
         )
 
-    # Derive page title and domain for naming
+    # Derive page title and domain for naming; unescape HTML entities so the
+    # stored name shows "Tom & Jerry" not "Tom &amp; Jerry".
     title_match = re.search(r"<title[^>]*>([^<]+)</title>", html, re.IGNORECASE)
-    page_title = title_match.group(1).strip() if title_match else urlparse(url).netloc
+    page_title = (
+        _html.unescape(title_match.group(1).strip())
+        if title_match
+        else urlparse(url).netloc
+    )
 
     sections = _split_by_headings(markdown)
 

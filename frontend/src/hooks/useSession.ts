@@ -23,11 +23,34 @@ export interface UseSessionReturn {
 
 const POLL_INTERVAL = 2000;
 
+/**
+ * Translate an error thrown by any source action into a user-facing string.
+ *
+ * Covers every structured AppError code the backend may return:
+ * - UNSUPPORTED_FILE (415)
+ * - FILE_TOO_LARGE   (413)
+ * - DUPLICATE_SOURCE (409)
+ * - TOO_MANY_SOURCES (400)
+ * - UNSAFE_URL       (422)
+ * - SOURCE_NOT_FOUND (404)
+ * Plus generic network failures (TypeError) and unknown errors.
+ */
 export function formatSourceActionError(error: unknown, fallback: string): string {
   if (error instanceof ApiError) {
-    if (error.code === "UNSUPPORTED_FILE") return `Unsupported file: ${error.message}`;
-    if (error.code === "UNSAFE_URL") return `Unsafe URL: ${error.message}`;
-    return error.message || fallback;
+    switch (error.code) {
+      case "UNSUPPORTED_FILE":
+        return `Unsupported file: ${error.message}`;
+      case "FILE_TOO_LARGE":
+        return `File too large: ${error.message}`;
+      case "DUPLICATE_SOURCE":
+        return `Already added: ${error.message}`;
+      case "TOO_MANY_SOURCES":
+        return `Too many sources: ${error.message}`;
+      case "UNSAFE_URL":
+        return `Unsafe URL: ${error.message}`;
+      default:
+        return error.message || fallback;
+    }
   }
   if (error instanceof TypeError) return "Network error. Check your connection and try again.";
   return error instanceof Error && error.message ? error.message : fallback;
