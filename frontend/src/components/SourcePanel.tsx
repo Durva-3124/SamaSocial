@@ -41,6 +41,10 @@ export default function SourcePanel({ sources, loading, uploading, error, onAddF
     if (trimmed) { onAddUrl(trimmed); setUrl(""); }
   }
 
+  // The URL form must be disabled while a file upload is in progress (uploading=true)
+  // so the user cannot submit a URL while the backend is accepting the file body.
+  const urlFormDisabled = loading;
+
   return (
     <aside className="source-panel">
       <h2 className="source-panel__title">Sources</h2>
@@ -50,6 +54,7 @@ export default function SourcePanel({ sources, loading, uploading, error, onAddF
           className="btn btn--primary"
           onClick={() => fileRef.current?.click()}
           disabled={loading}
+          aria-busy={uploading}
         >
           {uploading ? "Uploading..." : "+ Upload file"}
         </button>
@@ -69,9 +74,15 @@ export default function SourcePanel({ sources, loading, uploading, error, onAddF
           placeholder="YouTube or webpage URL"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          disabled={loading}
+          disabled={urlFormDisabled}
+          aria-label="YouTube or webpage URL"
         />
-        <button className="btn btn--secondary" type="submit" disabled={loading || !url.trim()}>
+        <button
+          className="btn btn--secondary"
+          type="submit"
+          disabled={urlFormDisabled || !url.trim()}
+          aria-busy={loading && !uploading}
+        >
           {loading && !uploading ? "Adding URL..." : "Add"}
         </button>
       </form>
@@ -84,12 +95,12 @@ export default function SourcePanel({ sources, loading, uploading, error, onAddF
         )}
         {sources.map((s) => (
           <li key={s.id} className={`source-item source-item--${s.status}`}>
-            <span className="source-item__icon">{TYPE_ICON[s.type] ?? "📁"}</span>
+            <span className="source-item__icon" aria-hidden="true">{TYPE_ICON[s.type] ?? "📁"}</span>
             <div className="source-item__info">
               <span className="source-item__name" title={s.name}>{s.name}</span>
               <span className="source-item__meta">
-                {STATUS_LABEL[s.status]}
-                {s.status === "ready" && ` · ${s.chunk_count} chunks`}
+                {STATUS_LABEL[s.status] ?? s.status}
+                {s.status === "ready" && ` · ${s.chunk_count} chunk${s.chunk_count === 1 ? "" : "s"}`}
                 {s.status === "failed" && s.error && ` · ${s.error}`}
               </span>
               {s.topics.length > 0 && (

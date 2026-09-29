@@ -109,11 +109,14 @@ def sniff_file_type(data: bytes) -> SourceType | None:
     Returns ``"pdf"``, ``"pptx"`` or ``None`` when the bytes match neither.
     This deliberately does not raise so that callers can produce a 415 with a
     useful message.
+
+    Handles truncated data gracefully: fewer than 4 bytes cannot match either
+    supported format and return ``None`` instead of raising.
     """
-    if not data:
+    if not data or len(data) < 5:
         return None
 
-    if data.startswith(_PDF_MAGIC):
+    if data[:5] == _PDF_MAGIC:
         return "pdf"
 
     # OOXML packages are ZIP archives. Confirm the presentation part so a plain
