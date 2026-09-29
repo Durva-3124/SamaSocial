@@ -3,12 +3,17 @@ import re
 
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 
+# Chunks shorter than this are not useful for retrieval and are dropped.
+_MIN_CHUNK_WORDS = 5
+
 
 def split_text(text: str, max_words: int = 350, overlap_words: int = 50) -> list[str]:
     """Split text into chunks of at most max_words words with overlap.
 
     Splits on sentence boundaries where possible; hard-splits sentences that
-    exceed max_words on their own.
+    exceed max_words on their own. Chunks with fewer than ``_MIN_CHUNK_WORDS``
+    words are discarded — they carry no retrievable signal and would waste
+    embedding capacity.
     """
     text = " ".join(text.split())
     if not text:
@@ -51,4 +56,4 @@ def split_text(text: str, max_words: int = 350, overlap_words: int = 50) -> list
     if current:
         chunks.append(" ".join(current))
 
-    return chunks
+    return [c for c in chunks if len(c.split()) >= _MIN_CHUNK_WORDS]
