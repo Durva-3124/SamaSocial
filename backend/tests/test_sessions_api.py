@@ -175,7 +175,7 @@ def test_delete_source_not_found(monkeypatch):
 # ── YouTube host classification (regression for substring-check bug) ──────────
 
 def test_is_youtube_url_real_domains():
-    from app.services.ingest_manager import is_youtube_url
+    from app.core.url_safety import is_youtube_url
     assert is_youtube_url("https://www.youtube.com/watch?v=abc") is True
     assert is_youtube_url("https://youtube.com/watch?v=abc") is True
     assert is_youtube_url("https://youtu.be/abc") is True
@@ -185,13 +185,13 @@ def test_is_youtube_url_real_domains():
 
 def test_is_youtube_url_spoofed_subdomain():
     """youtube.com.evil.com must NOT be classified as YouTube."""
-    from app.services.ingest_manager import is_youtube_url
+    from app.core.url_safety import is_youtube_url
     assert is_youtube_url("https://youtube.com.evil.com/watch?v=abc") is False
 
 
 def test_is_youtube_url_spoofed_path():
     """evil.example/youtu.be/abc must NOT be classified as YouTube."""
-    from app.services.ingest_manager import is_youtube_url
+    from app.core.url_safety import is_youtube_url
     assert is_youtube_url("https://evil.example/youtu.be/abc") is False
 
 
@@ -203,7 +203,7 @@ def test_ingest_url_spoofed_youtube_routes_to_web():
 
     async def _fake_ingest_url(sid, url, **_):
         session = ss.get(sid)
-        from app.services.ingest_manager import is_youtube_url
+        from app.core.url_safety import is_youtube_url
         from app.models.session import SourceRecord
         src_type = "youtube" if is_youtube_url(url) else "web"
         captured.append({"url": url, "type": src_type})
