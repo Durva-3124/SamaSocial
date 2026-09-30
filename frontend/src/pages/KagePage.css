@@ -1,4 +1,14 @@
+/* =============================================================
+   KagePage.css — landing page + floating dock nav
+   Dock uses the same brand tokens as NavBar.css:
+     • Cyan dot mark instead of warm amber
+     • Primary blue for active/hover rather than warm-brown
+     • Height and font size aligned with --navbar-height token
+   ============================================================= */
+
+/* ── Full-screen shader canvas ── */
 .shader-frame {
+  position: relative;
   width: 100%;
   height: 100svh;
   min-height: 620px;
@@ -11,89 +21,107 @@
   height: 100%;
 }
 
+/* ── Floating dock navigation ── */
 .app-dock {
   position: absolute;
-  top: 22px;
+  top: 20px;
   left: 50%;
+  transform: translateX(-50%);
   z-index: 10;
+
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--space-3);
+
   width: min(720px, calc(100% - 40px));
-  min-height: 48px;
-  padding: 6px 8px 6px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 999px;
-  background: rgba(16, 15, 14, 0.72);
-  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.28), inset 0 1px rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(16px) saturate(120%);
-  transform: translateX(-50%);
+  height: var(--navbar-height);      /* tied to same token as NavBar */
+  padding: 0 var(--space-2) 0 var(--space-4);
+
+  background: rgba(9, 9, 11, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-full);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(20px) saturate(130%);
 }
 
-.app-dock a {
-  color: rgba(255, 248, 235, 0.78);
+/* ── Brand section ── */
+.app-dock__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: rgba(244, 244, 245, 0.9);
   text-decoration: none;
+  flex-shrink: 0;
+}
+.app-dock__brand:hover { text-decoration: none; color: #fff; }
+
+/* Cyan dot — same brand mark language as NavBar */
+.app-dock__mark {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  background: var(--color-cyan-dim);
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  color: var(--color-cyan);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  flex-shrink: 0;
+  /* subtle glow matching the NavBar brand dot */
+  box-shadow: 0 0 12px rgba(34, 211, 238, 0.3);
 }
 
-.app-dock__brand,
+/* ── Links section ── */
 .app-dock__links {
   display: flex;
   align-items: center;
-}
-
-.app-dock__brand {
-  gap: 9px;
-  font-size: 13px;
-  letter-spacing: 0.04em;
-}
-
-.app-dock__mark {
-  display: grid;
-  width: 30px;
-  height: 30px;
-  place-items: center;
-  border-radius: 50%;
-  color: #22100b;
-  background: #e8c9a2;
-  font-weight: 700;
-}
-
-.app-dock__links {
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .app-dock__links a {
-  padding: 9px 13px;
-  border-radius: 999px;
-  font-size: 12px;
-  transition: color 160ms ease, background 160ms ease;
+  display: inline-flex;
+  align-items: center;
+  height: calc(var(--navbar-height) - 16px);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+  color: rgba(244, 244, 245, 0.65);
+  text-decoration: none;
+  transition:
+    color       var(--transition-normal),
+    background  var(--transition-normal);
 }
-
 .app-dock__links a:hover,
 .app-dock__links a:focus-visible {
-  color: #21130e;
-  background: #f2d5ad;
+  color: var(--color-text);
+  background: rgba(59, 130, 246, 0.15);   /* primary-dim — same as NavBar hover */
+  text-decoration: none;
 }
 
-.route-loading {
-  display: grid;
-  min-height: calc(100svh - 58px);
-  place-items: center;
-  color: var(--color-text-muted);
-}
-
+/* ── Responsive ── */
 @media (max-width: 620px) {
   .app-dock {
     top: 12px;
     width: calc(100% - 24px);
+    padding: 0 var(--space-2) 0 var(--space-3);
   }
-
-  .app-dock__brand > span:last-child {
+  /* Hide the text part of brand label, keep mark */
+  .app-dock__brand span:last-child {
     display: none;
   }
-
   .app-dock__links a {
-    padding-inline: 9px;
-    font-size: 11px;
+    padding-inline: var(--space-2);
+    font-size: var(--text-xs);
   }
 }
