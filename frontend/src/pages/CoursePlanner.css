@@ -1,94 +1,100 @@
+/* =============================================================
+   CoursePlanner.css — page layout for Task 2
+   Chat sidebar and plan area use token constants for widths/spacing.
+   ============================================================= */
+
+/* ── Full-height two-column grid ── */
 .cp-layout {
   display: grid;
-  grid-template-columns: 340px 1fr;
-  height: calc(100vh - 52px); /* subtract navbar height */
+  grid-template-columns: var(--chat-sidebar-width) 1fr;
+  height: calc(100svh - var(--navbar-height));
+  min-height: 0;
   overflow: hidden;
+  background: var(--color-bg);
   position: relative;
-  min-height: 0;
 }
 
+/* ── Left column — conversational chat ── */
 .cp-chat {
-  border-right: 1px solid var(--color-border);
-  overflow: hidden;
   display: flex;
   flex-direction: column;
-  box-shadow: 8px 0 24px -24px rgba(0, 0, 0, 0.9);
+  overflow: hidden;
   min-height: 0;
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  box-shadow: 4px 0 20px -16px rgba(0, 0, 0, 0.9);
 }
 
+/* Syllabus-replace confirmation bar (inside chat column) */
+.cp-confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-warning-dim);
+  border-top: 1px solid var(--color-border);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+/* ── Right column — plan viewer / empty state ── */
 .cp-plan {
-  overflow: hidden;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   min-width: 0;
   min-height: 0;
+  background: var(--color-bg);
 }
 
+/* ── Empty plan state ── */
 .cp-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   height: 100%;
-  gap: var(--spacing-sm);
-  color: var(--color-text-muted);
+  gap: var(--space-3);
   text-align: center;
-  padding: var(--spacing-xl);
-  background: radial-gradient(circle at center, rgba(59, 130, 246, 0.08), transparent 38%), var(--color-bg);
+  padding: var(--space-10);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+  /* radial glow from centre */
+  background: radial-gradient(ellipse at center, var(--color-primary-dim), transparent 50%);
+}
+
+.cp-empty p:first-child {
+  max-width: 340px;
 }
 
 .cp-intake-hint {
-  font-size: var(--font-size-sm);
+  font-size: var(--text-sm);
+  color: var(--color-text-subtle);
+  font-family: var(--font-mono);
 }
-
-/* btn--ghost utility (used in PlanViewer) */
-.btn--ghost {
-  background: none;
-  border: 1px solid var(--color-border);
+.cp-intake-hint strong {
   color: var(--color-text-muted);
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-size: var(--font-size-sm);
 }
 
-.btn--ghost:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-}
-
+/* ── Mobile ── */
 @media (max-width: 768px) {
   .cp-layout {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(320px, 50vh) minmax(420px, auto);
+    grid-template-rows: minmax(320px, 48vh) 1fr;
     height: auto;
-    min-height: calc(100svh - 48px);
+    min-height: calc(100svh - var(--navbar-height));
     overflow: visible;
   }
-
   .cp-chat {
     border-right: none;
     border-bottom: 1px solid var(--color-border);
     min-height: 320px;
   }
-
   .cp-plan {
     min-height: 420px;
     overflow: visible;
   }
 }
-
-.cp-confirm {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-sm) var(--spacing-md);
-  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
-  border-top: 1px solid var(--color-border);
-  font-size: var(--font-size-sm);
-  flex-wrap: wrap;
-}
-
-.cp-layout { background: var(--color-bg); }
-.cp-chat { background: var(--color-surface); }
-.cp-plan { background: var(--color-bg); }
