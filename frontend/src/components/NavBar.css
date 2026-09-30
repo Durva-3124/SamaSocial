@@ -28,6 +28,15 @@
   color: var(--color-text);
   text-decoration: none;
   flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  margin-left: calc(-1 * var(--space-2));
+  transition: color var(--transition-normal), background var(--transition-normal);
+}
+.navbar-brand:hover {
+  color: var(--color-text);
+  background: var(--color-surface-hover);
+  text-decoration: none;
 }
 
 /* Animated cyan dot */
