@@ -1,40 +1,124 @@
+/* =============================================================
+   SAMASOCIAL DESIGN TOKENS  — single source of truth
+   Every component references these variables; nothing is hard-coded.
+   ============================================================= */
+
 :root {
-  --color-bg: #09090b;
-  --color-surface: #121215;
-  --color-surface-raised: #18181b;
-  --color-surface-hover: #222227;
-  --color-border: #27272a;
-  --color-border-strong: #3f3f46;
-  --color-text: #f4f4f5;
-  --color-text-muted: #a1a1aa;
-  --color-text-subtle: #71717a;
-  --color-primary: #3b82f6;
-  --color-primary-hover: #2563eb;
-  --color-indigo: #6366f1;
-  --color-success: #4ade80;
-  --color-error: #ff7b72;
-  --color-warning: #ffb86b;
-  --color-cyan: #67e8f9;
-  --color-grid: rgba(255, 255, 255, 0.035);
-  --color-glow: rgba(59, 130, 246, 0.22);
+  /* ── Colour palette ── */
+  --color-bg:              #09090b;   /* page canvas */
+  --color-surface:         #111113;   /* panel / sidebar background */
+  --color-surface-raised:  #18181b;   /* card, input field */
+  --color-surface-hover:   #1f1f24;   /* interactive hover state */
+  --color-overlay:         rgba(0, 0, 0, 0.72);  /* modal backdrop */
 
-  --spacing-xs: 4px;
-  --spacing-sm: 8px;
-  --spacing-md: 12px;
-  --spacing-lg: 20px;
-  --spacing-xl: 32px;
+  --color-border:          #27272a;   /* default rule / divider */
+  --color-border-strong:   #3f3f46;   /* separator with emphasis */
+  --color-border-focus:    #3b82f6;   /* focus ring colour */
 
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --shadow-panel: 0 8px 32px -18px rgba(0, 0, 0, 0.9);
-  --shadow-glow: 0 0 24px -8px var(--color-glow);
+  --color-text:            #f4f4f5;   /* primary text */
+  --color-text-muted:      #a1a1aa;   /* secondary / label text */
+  --color-text-subtle:     #52525b;   /* placeholder / disabled */
 
-  --font-sans: Geist, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", Consolas, monospace;
-  --font-size-xs: 11px;
-  --font-size-sm: 12px;
-  --font-size-base: 13px;
-  --font-size-lg: 15px;
-  --font-size-xl: 24px;
+  --color-primary:         #3b82f6;   /* brand blue */
+  --color-primary-hover:   #2563eb;
+  --color-primary-dim:     rgba(59, 130, 246, 0.12);  /* tinted background */
+  --color-primary-ring:    rgba(59, 130, 246, 0.35);  /* focus glow */
+
+  --color-accent:          #6366f1;   /* indigo accent */
+  --color-accent-dim:      rgba(99, 102, 241, 0.12);
+
+  --color-cyan:            #22d3ee;   /* brand dot / highlight */
+  --color-cyan-dim:        rgba(34, 211, 238, 0.15);
+
+  --color-success:         #4ade80;
+  --color-success-dim:     rgba(74, 222, 128, 0.10);
+  --color-warning:         #fbbf24;
+  --color-warning-dim:     rgba(251, 191, 36, 0.10);
+  --color-error:           #f87171;
+  --color-error-dim:       rgba(248, 113, 113, 0.10);
+
+  /* chip / tag colours (shared by SourcePanel, PlanViewer, etc.) */
+  --color-chip-bg:         rgba(99, 102, 241, 0.12);
+  --color-chip-text:       #a5b4fc;
+  --color-chip-border:     rgba(99, 102, 241, 0.28);
+
+  --color-grid:            rgba(255, 255, 255, 0.03);  /* background grid lines */
+
+  /* ── Spacing scale (4-pt base) ── */
+  --space-1:   4px;
+  --space-2:   8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* legacy aliases — keep until all components are migrated */
+  --spacing-xs: var(--space-1);
+  --spacing-sm: var(--space-2);
+  --spacing-md: var(--space-3);
+  --spacing-lg: var(--space-5);
+  --spacing-xl: var(--space-8);
+
+  /* ── Typography ── */
+  --font-sans: "Geist", "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", Consolas, monospace;
+
+  --text-xs:   11px;
+  --text-sm:   12px;
+  --text-base: 13px;
+  --text-md:   14px;
+  --text-lg:   15px;
+  --text-xl:   18px;
+  --text-2xl:  22px;
+  --text-3xl:  28px;
+
+  --leading-tight:  1.25;
+  --leading-normal: 1.55;
+  --leading-relaxed: 1.7;
+
+  /* legacy aliases */
+  --font-size-xs:   var(--text-xs);
+  --font-size-sm:   var(--text-sm);
+  --font-size-base: var(--text-base);
+  --font-size-lg:   var(--text-lg);
+  --font-size-xl:   var(--text-2xl);
+
+  /* ── Radii ── */
+  --radius-xs:  3px;
+  --radius-sm:  6px;
+  --radius-md:  10px;
+  --radius-lg:  14px;
+  --radius-xl:  20px;
+  --radius-full: 9999px;
+
+  /* ── Elevation / Shadows ── */
+  --shadow-xs:    0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-sm:    0 2px 8px -2px rgba(0, 0, 0, 0.6);
+  --shadow-md:    0 4px 16px -4px rgba(0, 0, 0, 0.7);
+  --shadow-lg:    0 8px 32px -8px rgba(0, 0, 0, 0.8);
+  --shadow-panel: var(--shadow-lg);
+  --shadow-modal: 0 24px 64px -12px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+  --shadow-glow-primary: 0 0 20px -6px var(--color-primary-ring);
+  --shadow-glow-cyan:    0 0 16px -4px rgba(34, 211, 238, 0.35);
+
+  /* ── Transitions ── */
+  --transition-fast:   120ms ease;
+  --transition-normal: 180ms ease;
+  --transition-slow:   280ms ease;
+
+  /* ── Component-level constants ── */
+  --navbar-height:        52px;
+  --sidebar-width:        300px;  /* Learning Assistant */
+  --chat-sidebar-width:   340px;  /* Course Planner */
+  --form-height:          44px;   /* shared input/button row height */
+  --form-padding-y:       12px;
+  --form-padding-x:       16px;
+  --chip-radius:          var(--radius-full);
+  --card-radius:          var(--radius-md);
+  --bubble-radius:        var(--radius-md);
+  --bubble-tail:          var(--radius-xs);
 }
