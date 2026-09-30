@@ -105,3 +105,10 @@
   align-items: center;
   gap: var(--space-2);
 }
+
+@media (max-width: 360px) {
+  .navbar { gap: 4px; padding-right: 10px; padding-left: 10px; }
+  .navbar-brand { font-size: 12px; }
+  .navbar-links { gap: 0; margin-left: auto; }
+  .navbar-links a { padding-right: 5px; padding-left: 5px; font-size: 10px; letter-spacing: 0; }
+}
